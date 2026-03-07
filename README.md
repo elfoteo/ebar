@@ -2,9 +2,9 @@
 Simple hyprland bar written in C with minimal dependencies
 
 ## Build
- - Clone the repository
+ - Clone the repository: `git clone https://github.com/elfoteo/ebar.git`
  - Run `make`
- - The binary will be created under `build/bar`
+ - The binary will be created under `build/ebar`
 
 ## Requirements
  - `gtk-layer-shell`, install using `sudo pacman -S gtk-layer-shell` on Arch Linux

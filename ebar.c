@@ -16,7 +16,7 @@
 #define CPU_TEMP_PATH "/sys/class/thermal/thermal_zone1/temp"
 #define VOLUME_APP "pavucontrol"
 #define VOLUME_SHOW_PERCENT 0
-#define WORKSPACE_CENTER 1
+#define WORKSPACE_CENTER 0
 #define SHOW_MEDIA_ARTIST 1
 
 typedef enum {

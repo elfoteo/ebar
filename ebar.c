@@ -13,7 +13,7 @@
 #define MAX_WORKSPACES 10
 
 typedef struct {
-  GtkWidget *ws_box;
+  GtkWidget *window;
   GtkWidget *ws_labels[MAX_WORKSPACES];
   GtkWidget *clock_time_label;
   GtkWidget *clock_date_label;
@@ -21,11 +21,15 @@ typedef struct {
   GtkWidget *cpu_scale;
   GtkWidget *disk_scale;
   GtkWidget *temp_scale;
+} BarWindow;
+
+typedef struct {
   int active_workspace;
   int ws_win_count[MAX_WORKSPACES + 1];
   pthread_mutex_t mutex;
   GHashTable *window_map; // address -> workspace_id
   long long prev_total, prev_idle;
+  GList *bar_windows;
 } AppWidgets;
 
 static void apply_css(void) {
@@ -128,26 +132,31 @@ static void sync_initial_state(AppWidgets *w) {
 
 static void update_workspace_display(AppWidgets *w) {
   pthread_mutex_lock(&w->mutex);
-  for (int i = 0; i < MAX_WORKSPACES; i++) {
-    int ws_id = i + 1;
-    gboolean occupied = (w->ws_win_count[ws_id] > 0);
-    const char *symbol = occupied ? "" : "";
-    gtk_label_set_text(GTK_LABEL(w->ws_labels[i]), symbol);
-    
-    GtkStyleContext *context = gtk_widget_get_style_context(w->ws_labels[i]);
-    gtk_style_context_remove_class(context, "workspace-active");
-    gtk_style_context_remove_class(context, "workspace-occupied");
+  for (GList *l = w->bar_windows; l != NULL; l = l->next) {
+    BarWindow *bw = (BarWindow *)l->data;
+    for (int i = 0; i < MAX_WORKSPACES; i++) {
+        int ws_id = i + 1;
+        gboolean occupied = (w->ws_win_count[ws_id] > 0);
+        const char *symbol = occupied ? "" : "";
+        gtk_label_set_text(GTK_LABEL(bw->ws_labels[i]), symbol);
+        
+        GtkStyleContext *context = gtk_widget_get_style_context(bw->ws_labels[i]);
+        gtk_style_context_remove_class(context, "workspace-active");
+        gtk_style_context_remove_class(context, "workspace-occupied");
 
-    if (ws_id == w->active_workspace) {
-      gtk_style_context_add_class(context, "workspace-active");
-    } else if (occupied) {
-      gtk_style_context_add_class(context, "workspace-occupied");
+        if (ws_id == w->active_workspace) {
+            gtk_style_context_add_class(context, "workspace-active");
+        } else if (occupied) {
+            gtk_style_context_add_class(context, "workspace-occupied");
+        }
     }
   }
   pthread_mutex_unlock(&w->mutex);
 }
 
 static void update_system_metrics(AppWidgets *w) {
+    double ram_val = 0, cpu_val = 0, disk_val = 0, temp_val = 0;
+    
     FILE *fp = fopen("/proc/meminfo", "r");
     if (fp) {
         long total = 0, avail = 0;
@@ -157,8 +166,9 @@ static void update_system_metrics(AppWidgets *w) {
             else if (strncmp(buf, "MemAvailable:", 13) == 0) avail = atol(buf + 13);
         }
         fclose(fp);
-        if (total > 0) gtk_range_set_value(GTK_RANGE(w->ram_scale), 100.0 * (total - avail) / total);
+        if (total > 0) ram_val = 100.0 * (total - avail) / total;
     }
+    
     fp = fopen("/proc/stat", "r");
     if (fp) {
         long long user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice;
@@ -169,22 +179,32 @@ static void update_system_metrics(AppWidgets *w) {
             if (w->prev_total > 0) {
                 long long total_diff = current_total - w->prev_total;
                 long long idle_diff = current_idle - w->prev_idle;
-                if (total_diff > 0) gtk_range_set_value(GTK_RANGE(w->cpu_scale), 100.0 * (total_diff - idle_diff) / total_diff);
+                if (total_diff > 0) cpu_val = 100.0 * (total_diff - idle_diff) / total_diff;
             }
             w->prev_total = current_total; w->prev_idle = current_idle;
         }
         fclose(fp);
     }
+    
     struct statvfs st;
     if (statvfs("/", &st) == 0) {
-        gtk_range_set_value(GTK_RANGE(w->disk_scale), 100.0 * (1.0 - (double)st.f_bavail / (double)st.f_blocks));
+        disk_val = 100.0 * (1.0 - (double)st.f_bavail / (double)st.f_blocks);
     }
+    
     fp = fopen("/sys/class/thermal/thermal_zone0/temp", "r");
     if (!fp) fp = fopen("/sys/class/hwmon/hwmon0/temp1_input", "r");
     if (fp) {
         int temp;
-        if (fscanf(fp, "%d", &temp) == 1) gtk_range_set_value(GTK_RANGE(w->temp_scale), temp / 1000.0);
+        if (fscanf(fp, "%d", &temp) == 1) temp_val = temp / 1000.0;
         fclose(fp);
+    }
+
+    for (GList *l = w->bar_windows; l != NULL; l = l->next) {
+        BarWindow *bw = (BarWindow *)l->data;
+        gtk_range_set_value(GTK_RANGE(bw->ram_scale), ram_val);
+        gtk_range_set_value(GTK_RANGE(bw->cpu_scale), cpu_val);
+        gtk_range_set_value(GTK_RANGE(bw->disk_scale), disk_val);
+        gtk_range_set_value(GTK_RANGE(bw->temp_scale), temp_val);
     }
 }
 
@@ -194,8 +214,12 @@ static void update_clock(AppWidgets *w) {
   char time_str[16], date_str[32];
   strftime(time_str, sizeof(time_str), "%H:%M", &tmv);
   strftime(date_str, sizeof(date_str), "%d/%m/%Y", &tmv);
-  gtk_label_set_text(GTK_LABEL(w->clock_time_label), time_str);
-  gtk_label_set_text(GTK_LABEL(w->clock_date_label), date_str);
+  
+  for (GList *l = w->bar_windows; l != NULL; l = l->next) {
+      BarWindow *bw = (BarWindow *)l->data;
+      gtk_label_set_text(GTK_LABEL(bw->clock_time_label), time_str);
+      gtk_label_set_text(GTK_LABEL(bw->clock_date_label), date_str);
+  }
   update_system_metrics(w);
 }
 
@@ -306,8 +330,7 @@ static GtkWidget* create_metric_box(const char *icon_str, GtkWidget **out_scale)
     return box;
 }
 
-int main(int argc, char **argv) {
-    gtk_init(&argc, &argv);
+static void create_bar_window(GdkMonitor *monitor, AppWidgets *widgets) {
     GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     GdkScreen *screen = gdk_screen_get_default();
     GdkVisual *visual = gdk_screen_get_rgba_visual(screen);
@@ -316,9 +339,8 @@ int main(int argc, char **argv) {
     }
     gtk_widget_set_app_paintable(win, TRUE);
 
-    apply_css();
-
     gtk_layer_init_for_window(GTK_WINDOW(win));
+    gtk_layer_set_monitor(GTK_WINDOW(win), monitor);
     gtk_layer_set_namespace(GTK_WINDOW(win), "ebar");
     gtk_layer_set_anchor(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
     gtk_layer_set_anchor(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
@@ -326,50 +348,47 @@ int main(int argc, char **argv) {
     gtk_layer_auto_exclusive_zone_enable(GTK_WINDOW(win));
     gtk_window_set_decorated(GTK_WINDOW(win), FALSE);
 
+    BarWindow *bw = g_new0(BarWindow, 1);
+    bw->window = win;
+
     GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
     gtk_widget_set_margin_top(hbox, 5);
     gtk_widget_set_margin_bottom(hbox, 5);
     gtk_widget_set_margin_start(hbox, 12);
     gtk_widget_set_margin_end(hbox, 12);
 
-    AppWidgets *widgets = g_new0(AppWidgets, 1);
-    pthread_mutex_init(&widgets->mutex, NULL);
-    widgets->window_map = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
-    sync_initial_state(widgets);
-
-    widgets->ws_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
+    GtkWidget *ws_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
     for (int i = 0; i < MAX_WORKSPACES; i++) {
-        widgets->ws_labels[i] = gtk_label_new(NULL);
-        GtkStyleContext *context = gtk_widget_get_style_context(widgets->ws_labels[i]);
+        bw->ws_labels[i] = gtk_label_new(NULL);
+        GtkStyleContext *context = gtk_widget_get_style_context(bw->ws_labels[i]);
         gtk_style_context_add_class(context, "workspace-label");
-        gtk_box_pack_start(GTK_BOX(widgets->ws_box), widgets->ws_labels[i], FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(ws_box), bw->ws_labels[i], FALSE, FALSE, 0);
     }
-    update_workspace_display(widgets);
 
     GtkWidget *spacer = gtk_label_new("");
-    gtk_box_pack_start(GTK_BOX(hbox), widgets->ws_box, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox), ws_box, FALSE, FALSE, 0);
     gtk_box_set_center_widget(GTK_BOX(hbox), spacer);
 
     GtkWidget *metrics_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     GtkWidget *left_col = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     GtkWidget *right_col = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     
-    gtk_box_pack_start(GTK_BOX(left_col), create_metric_box("", &widgets->ram_scale), FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(left_col), create_metric_box("", &widgets->cpu_scale), FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(right_col), create_metric_box("󰋊", &widgets->disk_scale), FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(right_col), create_metric_box("󰔏", &widgets->temp_scale), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(left_col), create_metric_box("", &bw->ram_scale), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(left_col), create_metric_box("", &bw->cpu_scale), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(right_col), create_metric_box("󰋊", &bw->disk_scale), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(right_col), create_metric_box("󰔏", &bw->temp_scale), FALSE, FALSE, 0);
     
     gtk_box_pack_start(GTK_BOX(metrics_box), left_col, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(metrics_box), right_col, FALSE, FALSE, 0);
     gtk_style_context_add_class(gtk_widget_get_style_context(metrics_box), "metrics");
 
     GtkWidget *cvbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    widgets->clock_time_label = gtk_label_new("");
-    gtk_widget_set_name(widgets->clock_time_label, "clock-time");
-    widgets->clock_date_label = gtk_label_new("");
-    gtk_widget_set_name(widgets->clock_date_label, "clock-date");
-    gtk_box_pack_start(GTK_BOX(cvbox), widgets->clock_time_label, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(cvbox), widgets->clock_date_label, FALSE, FALSE, 0);
+    bw->clock_time_label = gtk_label_new("");
+    gtk_widget_set_name(bw->clock_time_label, "clock-time");
+    bw->clock_date_label = gtk_label_new("");
+    gtk_widget_set_name(bw->clock_date_label, "clock-date");
+    gtk_box_pack_start(GTK_BOX(cvbox), bw->clock_time_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(cvbox), bw->clock_date_label, FALSE, FALSE, 0);
 
     gtk_box_pack_end(GTK_BOX(hbox), cvbox, FALSE, FALSE, 0);
     gtk_box_pack_end(GTK_BOX(hbox), metrics_box, FALSE, FALSE, 0);
@@ -378,8 +397,28 @@ int main(int argc, char **argv) {
     gtk_widget_set_name(main_container, "main-container");
     gtk_box_pack_start(GTK_BOX(main_container), hbox, TRUE, TRUE, 0);
     gtk_container_add(GTK_CONTAINER(win), main_container);
+    
+    widgets->bar_windows = g_list_append(widgets->bar_windows, bw);
     gtk_widget_show_all(win);
+}
 
+int main(int argc, char **argv) {
+    gtk_init(&argc, &argv);
+    apply_css();
+
+    AppWidgets *widgets = g_new0(AppWidgets, 1);
+    pthread_mutex_init(&widgets->mutex, NULL);
+    widgets->window_map = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    sync_initial_state(widgets);
+
+    GdkDisplay *display = gdk_display_get_default();
+    int n_monitors = gdk_display_get_n_monitors(display);
+    for (int i = 0; i < n_monitors; i++) {
+        GdkMonitor *monitor = gdk_display_get_monitor(display, i);
+        create_bar_window(monitor, widgets);
+    }
+
+    update_workspace_display(widgets);
     update_clock(widgets);
     g_timeout_add_seconds(1, update_timer, widgets);
 

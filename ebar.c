@@ -35,11 +35,7 @@ typedef struct {
 
 // Change your layout here! Use M_NONE for empty slots.
 static const BarConfig bar_config = {
-    .layout = {
-        { M_RAM,  M_CPU,  M_NONE },
-        { M_DISK, M_TEMP, M_NONE }
-    }
-};
+    .layout = {{M_RAM, M_CPU, M_NONE}, {M_DISK, M_TEMP, M_NONE}}};
 
 typedef struct {
     GtkWidget *window;
@@ -290,7 +286,7 @@ static void fetch_system_metrics(AppWidgets *w) {
             long long current_idle = idle + iowait;
             long long current_total =
                 user + nice + system + idle + iowait + irq + softirq + steal;
-            
+
             pthread_mutex_lock(&w->mutex);
             if (w->prev_total > 0) {
                 long long total_diff = current_total - w->prev_total;
@@ -392,7 +388,8 @@ static void fetch_system_metrics(AppWidgets *w) {
 
 static void fetch_volume(AppWidgets *w) {
     // Skip polling if there was a manual update recently (within 2 seconds)
-    if (time(NULL) - w->last_manual_vol_update < 2) return;
+    if (time(NULL) - w->last_manual_vol_update < 2)
+        return;
 
     float vol = 0;
     int muted = 0;
@@ -401,16 +398,18 @@ static void fetch_volume(AppWidgets *w) {
         char buf[256];
         if (fgets(buf, sizeof(buf), fp)) {
             char *p = strstr(buf, "/ ");
-            if (p) vol = atof(p + 2);
+            if (p)
+                vol = atof(p + 2);
         }
         pclose(fp);
     }
-    
+
     fp = popen("pactl get-sink-mute @DEFAULT_SINK@", "r");
     if (fp) {
         char buf[64];
         if (fgets(buf, sizeof(buf), fp)) {
-            if (strstr(buf, "yes")) muted = 1;
+            if (strstr(buf, "yes"))
+                muted = 1;
         }
         pclose(fp);
     }
@@ -426,33 +425,60 @@ static void fetch_media_status(AppWidgets *w) {
     return;
 }
 
-static void update_metric_widget(GtkWidget *widget, MetricType type, SystemData *d) {
-    if (!widget) return;
+static void update_metric_widget(GtkWidget *widget, MetricType type,
+                                 SystemData *d) {
+    if (!widget)
+        return;
     char buf[64];
-    
+
     if (METRIC_USE_BARS) {
         double val = 0;
-        switch(type) {
-            case M_RAM: val = d->ram_val; break;
-            case M_CPU: val = d->cpu_val; break;
-            case M_GPU: val = d->gpu_val; break;
-            case M_DISK: val = d->disk_val; break;
-            case M_TEMP: val = d->temp_val; break;
-            case M_GPU_TEMP: val = d->gpu_temp_val; break;
-            default: return;
+        switch (type) {
+        case M_RAM:
+            val = d->ram_val;
+            break;
+        case M_CPU:
+            val = d->cpu_val;
+            break;
+        case M_GPU:
+            val = d->gpu_val;
+            break;
+        case M_DISK:
+            val = d->disk_val;
+            break;
+        case M_TEMP:
+            val = d->temp_val;
+            break;
+        case M_GPU_TEMP:
+            val = d->gpu_temp_val;
+            break;
+        default:
+            return;
         }
         gtk_range_set_value(GTK_RANGE(widget), val);
     } else {
-        switch(type) {
-            case M_RAM:
-                snprintf(buf, sizeof(buf), "%.1f/%.1f", d->ram_total - d->ram_avail, d->ram_total);
-                break;
-            case M_CPU: snprintf(buf, sizeof(buf), "%.0f%%", d->cpu_val); break;
-            case M_GPU: snprintf(buf, sizeof(buf), "%.0f%%", d->gpu_val); break;
-            case M_DISK: snprintf(buf, sizeof(buf), "%.0f%%", d->disk_val); break;
-            case M_TEMP: snprintf(buf, sizeof(buf), "%.0f°C", d->temp_val); break;
-            case M_GPU_TEMP: snprintf(buf, sizeof(buf), "%.0f°C", d->gpu_temp_val); break;
-            default: return;
+        switch (type) {
+        case M_RAM:
+            snprintf(buf, sizeof(buf), "%.1f/%.1f", d->ram_total - d->ram_avail,
+                     d->ram_total);
+            break;
+        case M_CPU:
+            snprintf(buf, sizeof(buf), "%.0f%%", d->cpu_val);
+            break;
+        case M_GPU:
+            snprintf(buf, sizeof(buf), "%.0f%%", d->gpu_val);
+            break;
+        case M_DISK:
+            snprintf(buf, sizeof(buf), "%.0f%%", d->disk_val);
+            break;
+        case M_TEMP:
+            snprintf(buf, sizeof(buf), "%.0f°C", d->temp_val);
+            break;
+        case M_GPU_TEMP:
+            snprintf(buf, sizeof(buf), "%.0f°C", d->gpu_temp_val);
+            break;
+        default:
+            return;
         }
         gtk_label_set_text(GTK_LABEL(widget), buf);
     }
@@ -466,36 +492,51 @@ static gboolean update_metrics_idle(gpointer data) {
 
     for (GList *l = w->bar_windows; l != NULL; l = l->next) {
         BarWindow *bw = (BarWindow *)l->data;
-        
+
         for (int i = 0; i < 6; i++) {
             update_metric_widget(bw->metrics[i], (MetricType)i, &d);
         }
 
         const char *icon = "󰕾";
-        if (d.vol_muted || d.vol == 0) icon = "󰝟";
-        else if (d.vol <= 33) icon = "󰕿";
-        else if (d.vol <= 66) icon = "󰖀";
+        if (d.vol_muted || d.vol == 0)
+            icon = "󰝟";
+        else if (d.vol <= 33)
+            icon = "󰕿";
+        else if (d.vol <= 66)
+            icon = "󰖀";
 
         char vstr[32];
-        if (d.vol_muted) snprintf(vstr, sizeof(vstr), "%s Muted", icon);
-        else if (VOLUME_SHOW_PERCENT) snprintf(vstr, sizeof(vstr), "%s %.0f%%", icon, d.vol);
-        else snprintf(vstr, sizeof(vstr), "%s", icon);
+#if VOLUME_SHOW_PERCENT
+        if (d.vol_muted)
+            snprintf(vstr, sizeof(vstr), "%s Muted", icon);
+#else
+        if (d.vol_muted)
+            snprintf(vstr, sizeof(vstr), "%s", icon);
+#endif
+        else if (VOLUME_SHOW_PERCENT)
+            snprintf(vstr, sizeof(vstr), "%s %.0f%%", icon, d.vol);
+        else
+            snprintf(vstr, sizeof(vstr), "%s", icon);
         gtk_button_set_label(GTK_BUTTON(bw->volume_btn), vstr);
 
 #if WORKSPACE_CENTER
         if (bw->media_play_btn) {
-            gtk_button_set_label(GTK_BUTTON(bw->media_play_btn), d.is_playing ? "󰏤" : "󰐊");
+            gtk_button_set_label(GTK_BUTTON(bw->media_play_btn),
+                                 d.is_playing ? "󰏤" : "󰐊");
         }
         int has_media = (d.media_title[0] != '\0');
-        if (bw->media_sep) gtk_widget_set_visible(bw->media_sep, has_media);
+        if (bw->media_sep)
+            gtk_widget_set_visible(bw->media_sep, has_media);
         if (bw->media_title_label) {
             gtk_label_set_text(GTK_LABEL(bw->media_title_label), d.media_title);
             gtk_widget_set_visible(bw->media_title_label, has_media);
         }
         if (bw->media_artist_label) {
-            gtk_label_set_text(GTK_LABEL(bw->media_artist_label), d.media_artist);
+            gtk_label_set_text(GTK_LABEL(bw->media_artist_label),
+                               d.media_artist);
 #if SHOW_MEDIA_ARTIST
-            gtk_widget_set_visible(bw->media_artist_label, has_media && d.media_artist[0] != '\0');
+            gtk_widget_set_visible(bw->media_artist_label,
+                                   has_media && d.media_artist[0] != '\0');
 #else
             gtk_widget_set_visible(bw->media_artist_label, FALSE);
 #endif
@@ -508,7 +549,9 @@ static gboolean update_metrics_idle(gpointer data) {
 static void *media_thread_func(void *data) {
     AppWidgets *w = (AppWidgets *)data;
     while (1) {
-        FILE *fp = popen("playerctl -F metadata --format '{{status}}::{{title}}::{{artist}}' 2>/dev/null", "r");
+        FILE *fp = popen("playerctl -F metadata --format "
+                         "'{{status}}::{{title}}::{{artist}}' 2>/dev/null",
+                         "r");
         if (!fp) {
             sleep(5);
             continue;
@@ -517,40 +560,46 @@ static void *media_thread_func(void *data) {
         char buf[1024];
         while (fgets(buf, sizeof(buf), fp)) {
             char *sep1 = strstr(buf, "::");
-            if (!sep1) continue;
+            if (!sep1)
+                continue;
             *sep1 = '\0';
             char *status = buf;
-            
+
             char *sep2 = strstr(sep1 + 2, "::");
-            if (!sep2) continue;
+            if (!sep2)
+                continue;
             *sep2 = '\0';
             char *title = sep1 + 2;
             char *artist = sep2 + 2;
 
             // Remove newline from artist
             size_t len = strlen(artist);
-            if (len > 0 && artist[len-1] == '\n') artist[len-1] = '\0';
+            if (len > 0 && artist[len - 1] == '\n')
+                artist[len - 1] = '\0';
 
             int playing = 0;
-            if (strstr(status, "Playing")) playing = 1;
-            
+            if (strstr(status, "Playing"))
+                playing = 1;
+
             pthread_mutex_lock(&w->mutex);
             w->sys_data.is_playing = playing;
-            strncpy(w->sys_data.media_title, title, sizeof(w->sys_data.media_title) - 1);
-            strncpy(w->sys_data.media_artist, artist, sizeof(w->sys_data.media_artist) - 1);
+            strncpy(w->sys_data.media_title, title,
+                    sizeof(w->sys_data.media_title) - 1);
+            strncpy(w->sys_data.media_artist, artist,
+                    sizeof(w->sys_data.media_artist) - 1);
             pthread_mutex_unlock(&w->mutex);
-            
+
             g_idle_add(update_metrics_idle, w);
         }
         pclose(fp);
-        
+
         pthread_mutex_lock(&w->mutex);
         w->sys_data.is_playing = 0;
         w->sys_data.media_title[0] = '\0';
         w->sys_data.media_artist[0] = '\0';
         pthread_mutex_unlock(&w->mutex);
         g_idle_add(update_metrics_idle, w);
-        
+
         sleep(2);
     }
     return NULL;
@@ -583,7 +632,8 @@ static void update_clock(AppWidgets *w) {
 }
 
 static void on_media_prev(GtkWidget *widget, gpointer data) {
-    g_spawn_command_line_async("playerctl previous || playerctl -p %any previous", NULL);
+    g_spawn_command_line_async(
+        "playerctl previous || playerctl -p %any previous", NULL);
 }
 
 static void on_media_play(GtkWidget *widget, gpointer data) {
@@ -591,36 +641,45 @@ static void on_media_play(GtkWidget *widget, gpointer data) {
 }
 
 static void on_media_next(GtkWidget *widget, gpointer data) {
-    g_spawn_command_line_async("playerctl next || playerctl -p %any next", NULL);
+    g_spawn_command_line_async("playerctl next || playerctl -p %any next",
+                               NULL);
 }
 
-static gboolean on_volume_scroll(GtkWidget *widget, GdkEventScroll *event, gpointer data) {
+static gboolean on_volume_scroll(GtkWidget *widget, GdkEventScroll *event,
+                                 gpointer data) {
     AppWidgets *w = (AppWidgets *)data;
     pthread_mutex_lock(&w->mutex);
     w->last_manual_vol_update = time(NULL);
-    
+
     if (event->direction == GDK_SCROLL_UP) {
         if (w->sys_data.vol < 100.0) {
             w->sys_data.vol += 2.0;
-            if (w->sys_data.vol > 100.0) w->sys_data.vol = 100.0;
+            if (w->sys_data.vol > 100.0)
+                w->sys_data.vol = 100.0;
             char cmd[64];
-            snprintf(cmd, sizeof(cmd), "pactl set-sink-volume @DEFAULT_SINK@ %.0f%%", w->sys_data.vol);
+            snprintf(cmd, sizeof(cmd),
+                     "pactl set-sink-volume @DEFAULT_SINK@ %.0f%%",
+                     w->sys_data.vol);
             g_spawn_command_line_async(cmd, NULL);
         }
     } else if (event->direction == GDK_SCROLL_DOWN) {
         w->sys_data.vol -= 2.0;
-        if (w->sys_data.vol < 0.0) w->sys_data.vol = 0.0;
+        if (w->sys_data.vol < 0.0)
+            w->sys_data.vol = 0.0;
         char cmd[64];
-        snprintf(cmd, sizeof(cmd), "pactl set-sink-volume @DEFAULT_SINK@ %.0f%%", w->sys_data.vol);
+        snprintf(cmd, sizeof(cmd),
+                 "pactl set-sink-volume @DEFAULT_SINK@ %.0f%%",
+                 w->sys_data.vol);
         g_spawn_command_line_async(cmd, NULL);
     }
-    
+
     pthread_mutex_unlock(&w->mutex);
     update_metrics_idle(w);
     return TRUE;
 }
 
-static gboolean on_volume_click(GtkWidget *widget, GdkEventButton *event, gpointer data) {
+static gboolean on_volume_click(GtkWidget *widget, GdkEventButton *event,
+                                gpointer data) {
     AppWidgets *w = (AppWidgets *)data;
     if (event->button == 1) { // Left click
         g_spawn_command_line_async(VOLUME_APP, NULL);
@@ -629,7 +688,8 @@ static gboolean on_volume_click(GtkWidget *widget, GdkEventButton *event, gpoint
         w->last_manual_vol_update = time(NULL);
         w->sys_data.vol_muted = !w->sys_data.vol_muted;
         pthread_mutex_unlock(&w->mutex);
-        g_spawn_command_line_async("pactl set-sink-mute @DEFAULT_SINK@ toggle", NULL);
+        g_spawn_command_line_async("pactl set-sink-mute @DEFAULT_SINK@ toggle",
+                                   NULL);
         update_metrics_idle(w);
     }
     return TRUE;
@@ -818,45 +878,56 @@ static void create_bar_window(GdkMonitor *monitor, AppWidgets *widgets) {
 
 #if WORKSPACE_CENTER
     GtkWidget *media_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_style_context_add_class(gtk_widget_get_style_context(media_box), "media-box");
-    
+    gtk_style_context_add_class(gtk_widget_get_style_context(media_box),
+                                "media-box");
+
     GtkWidget *pbtn = gtk_button_new_with_label("󰒮");
     bw->media_play_btn = gtk_button_new_with_label("󰐊");
     GtkWidget *nbtn = gtk_button_new_with_label("󰒭");
-    
+
     gtk_widget_set_can_focus(pbtn, FALSE);
     gtk_widget_set_can_focus(bw->media_play_btn, FALSE);
     gtk_widget_set_can_focus(nbtn, FALSE);
-    
+
     g_signal_connect(pbtn, "clicked", G_CALLBACK(on_media_prev), NULL);
-    g_signal_connect(bw->media_play_btn, "clicked", G_CALLBACK(on_media_play), NULL);
+    g_signal_connect(bw->media_play_btn, "clicked", G_CALLBACK(on_media_play),
+                     NULL);
     g_signal_connect(nbtn, "clicked", G_CALLBACK(on_media_next), NULL);
-    
+
     gtk_box_pack_start(GTK_BOX(media_box), pbtn, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(media_box), bw->media_play_btn, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(media_box), nbtn, FALSE, FALSE, 0);
-    
+
     bw->media_sep = gtk_separator_new(GTK_ORIENTATION_VERTICAL);
-    gtk_style_context_add_class(gtk_widget_get_style_context(bw->media_sep), "media-sep");
+    gtk_style_context_add_class(gtk_widget_get_style_context(bw->media_sep),
+                                "media-sep");
     gtk_box_pack_start(GTK_BOX(media_box), bw->media_sep, FALSE, FALSE, 0);
 
     GtkWidget *text_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_set_valign(text_vbox, GTK_ALIGN_CENTER);
 
     bw->media_title_label = gtk_label_new("");
-    gtk_style_context_add_class(gtk_widget_get_style_context(bw->media_title_label), "media-title-label");
-    gtk_label_set_ellipsize(GTK_LABEL(bw->media_title_label), PANGO_ELLIPSIZE_END);
+    gtk_style_context_add_class(
+        gtk_widget_get_style_context(bw->media_title_label),
+        "media-title-label");
+    gtk_label_set_ellipsize(GTK_LABEL(bw->media_title_label),
+                            PANGO_ELLIPSIZE_END);
     gtk_label_set_xalign(GTK_LABEL(bw->media_title_label), 0);
-    gtk_box_pack_start(GTK_BOX(text_vbox), bw->media_title_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(text_vbox), bw->media_title_label, FALSE, FALSE,
+                       0);
 
     bw->media_artist_label = gtk_label_new("");
-    gtk_style_context_add_class(gtk_widget_get_style_context(bw->media_artist_label), "media-artist-label");
-    gtk_label_set_ellipsize(GTK_LABEL(bw->media_artist_label), PANGO_ELLIPSIZE_END);
+    gtk_style_context_add_class(
+        gtk_widget_get_style_context(bw->media_artist_label),
+        "media-artist-label");
+    gtk_label_set_ellipsize(GTK_LABEL(bw->media_artist_label),
+                            PANGO_ELLIPSIZE_END);
     gtk_label_set_xalign(GTK_LABEL(bw->media_artist_label), 0);
-    gtk_box_pack_start(GTK_BOX(text_vbox), bw->media_artist_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(text_vbox), bw->media_artist_label, FALSE, FALSE,
+                       0);
 
     gtk_box_pack_start(GTK_BOX(media_box), text_vbox, FALSE, FALSE, 0);
-    
+
     gtk_box_pack_start(GTK_BOX(hbox), media_box, FALSE, FALSE, 0);
 #endif
 
@@ -871,14 +942,15 @@ static void create_bar_window(GdkMonitor *monitor, AppWidgets *widgets) {
 
     GtkWidget *metrics_grid = gtk_grid_new();
     const char *icons[] = {"", "", "󰢮", "󰋊", "󰔏", "󰔏"};
-    
+
     for (int r = 0; r < 2; r++) {
         for (int c = 0; c < 3; c++) {
             MetricType type = bar_config.layout[r][c];
             if (type != M_NONE && type < 6) {
-                gtk_grid_attach(GTK_GRID(metrics_grid), 
-                                create_metric_box(icons[type], &bw->metrics[type]), 
-                                c, r, 1, 1);
+                gtk_grid_attach(
+                    GTK_GRID(metrics_grid),
+                    create_metric_box(icons[type], &bw->metrics[type]), c, r, 1,
+                    1);
             }
         }
     }
@@ -895,14 +967,18 @@ static void create_bar_window(GdkMonitor *monitor, AppWidgets *widgets) {
     gtk_box_pack_start(GTK_BOX(cvbox), bw->clock_date_label, FALSE, FALSE, 0);
 
     gtk_box_pack_end(GTK_BOX(hbox), cvbox, FALSE, FALSE, 0);
-    
+
     bw->volume_btn = gtk_button_new_with_label("");
     gtk_widget_set_can_focus(bw->volume_btn, FALSE);
-    gtk_style_context_add_class(gtk_widget_get_style_context(bw->volume_btn), "volume-btn");
-    gtk_widget_add_events(bw->volume_btn, GDK_SCROLL_MASK | GDK_BUTTON_PRESS_MASK);
-    g_signal_connect(bw->volume_btn, "scroll-event", G_CALLBACK(on_volume_scroll), widgets);
-    g_signal_connect(bw->volume_btn, "button-press-event", G_CALLBACK(on_volume_click), widgets);
-    
+    gtk_style_context_add_class(gtk_widget_get_style_context(bw->volume_btn),
+                                "volume-btn");
+    gtk_widget_add_events(bw->volume_btn,
+                          GDK_SCROLL_MASK | GDK_BUTTON_PRESS_MASK);
+    g_signal_connect(bw->volume_btn, "scroll-event",
+                     G_CALLBACK(on_volume_scroll), widgets);
+    g_signal_connect(bw->volume_btn, "button-press-event",
+                     G_CALLBACK(on_volume_click), widgets);
+
     gtk_box_pack_end(GTK_BOX(hbox), bw->volume_btn, FALSE, FALSE, 0);
     gtk_box_pack_end(GTK_BOX(hbox), metrics_grid, FALSE, FALSE, 0);
 

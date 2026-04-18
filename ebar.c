@@ -31,6 +31,18 @@ typedef struct {
 // Change your layout here! Use M_NONE for empty slots.
 static const BarConfig bar_config = {.layout = {{M_RAM, M_CPU, M_NONE}, {M_DISK, M_TEMP, M_NONE}}};
 
+// Automatically detect whether any GPU metric is present in the layout so
+// nvidia-smi is never spawned when it is not needed.
+static int layout_has_gpu(void) {
+	for (int r = 0; r < BAR_CONFIG_ROW_COUNT; r++)
+		for (int c = 0; c < BAR_CONFIG_COLUMN_COUNT; c++) {
+			MetricType t = bar_config.layout[r][c];
+			if (t == M_GPU || t == M_GPU_TEMP)
+				return 1;
+		}
+	return 0;
+}
+
 typedef struct {
 	GtkWidget *window;
 	GtkWidget *ws_labels[MAX_WORKSPACES];
@@ -347,16 +359,18 @@ static void fetch_system_metrics(AppWidgets *w) {
 	}
 
 	double gpu_val = 0, gpu_temp_val = 0;
-	fp = popen("nvidia-smi --query-gpu=utilization.gpu,temperature.gpu "
-			   "--format=csv,noheader,nounits 2>/dev/null",
-			   "r");
-	if (fp) {
-		int g_usage, g_temp;
-		if (fscanf(fp, "%d, %d", &g_usage, &g_temp) == 2) {
-			gpu_val = g_usage;
-			gpu_temp_val = g_temp;
+	if (layout_has_gpu()) {
+		fp = popen("nvidia-smi --query-gpu=utilization.gpu,temperature.gpu "
+				   "--format=csv,noheader,nounits 2>/dev/null",
+				   "r");
+		if (fp) {
+			int g_usage, g_temp;
+			if (fscanf(fp, "%d, %d", &g_usage, &g_temp) == 2) {
+				gpu_val = g_usage;
+				gpu_temp_val = g_temp;
+			}
+			pclose(fp);
 		}
-		pclose(fp);
 	}
 
 	pthread_mutex_lock(&w->mutex);

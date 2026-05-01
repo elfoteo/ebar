@@ -32,7 +32,8 @@ void config_save_default(const char *path) {
     fprintf(f, "background      = rgba(0,0,0,0.2)\n");
     fprintf(f, "accent          = #D35D6E\n");
     fprintf(f, "foreground      = #ffffff\n");
-    fprintf(f, "dim_foreground  = rgba(255,255,255,0.6)\n\n");
+    fprintf(f, "dim_foreground  = rgba(255,255,255,0.6)\n");
+    fprintf(f, "ring_color      = rgba(255,255,255,0.9) # colour of circular progress rings\n\n");
 
     fprintf(f, "[font]\n");
     fprintf(f, "family          = JetBrainsMonoNerdFont\n");
@@ -45,7 +46,7 @@ void config_save_default(const char *path) {
     fprintf(f, "show_empty      = true\n\n");
 
     fprintf(f, "[left]\n");
-    fprintf(f, "# Options: workspaces, clock, media, volume, metrics\n");
+    fprintf(f, "# Options: workspaces, clock, media, volume, metrics, nightlight\n");
     fprintf(f, "widgets         = workspaces\n\n");
 
     fprintf(f, "[center]\n");
@@ -72,7 +73,16 @@ void config_save_default(const char *path) {
     fprintf(f, "# Rows separated by ; columns by spaces. Options: ram cpu gpu disk temp gputemp\n");
     fprintf(f, "layout          = ram cpu ; disk temp\n");
     fprintf(f, "use_bars        = true\n");
-    fprintf(f, "temp_path       = /sys/class/thermal/thermal_zone1/temp\n");
+    fprintf(f, "temp_path       = /sys/class/thermal/thermal_zone1/temp\n\n");
+
+    fprintf(f, "[nightlight]\n");
+    fprintf(f, "# Requires hyprsunset running (exec-once = hyprsunset in hyprland.conf)\n");
+    fprintf(f, "temp_max        = 6500   # white-point temperature (K)\n");
+    fprintf(f, "temp_min        = 5400   # warm night temperature (K)\n");
+    fprintf(f, "gamma_max       = 100    # full brightness gamma\n");
+    fprintf(f, "gamma_min       = 75     # reduced gamma at max level\n");
+    fprintf(f, "step            = 5      # level change per scroll tick (0-100 range)\n");
+    fprintf(f, "curve           = ease   # ease | linear\n");
 
     fclose(f);
 }
@@ -104,6 +114,7 @@ void config_load(Config *cfg) {
     strcpy(cfg->colors.foreground,     "#ffffff");
     strcpy(cfg->colors.dim_foreground, "rgba(255,255,255,0.6)");
     strcpy(cfg->colors.border,         "rgba(255,255,255,0.2)");
+    strcpy(cfg->colors.ring_color,     "rgba(255,255,255,0.9)");
 
     strcpy(cfg->font.family, "JetBrainsMonoNerdFont");
     cfg->font.size = 13;
@@ -132,6 +143,13 @@ void config_load(Config *cfg) {
     cfg->metrics.layout[1][0] = M_DISK; cfg->metrics.layout[1][1] = M_TEMP; cfg->metrics.layout[1][2] = M_NONE;
     cfg->metrics.use_bars = 1;
     strcpy(cfg->metrics.temp_path, "/sys/class/thermal/thermal_zone1/temp");
+
+    cfg->nightlight.temp_max  = 6500;
+    cfg->nightlight.temp_min  = 5400;
+    cfg->nightlight.gamma_max = 100.0;
+    cfg->nightlight.gamma_min = 75.0;
+    cfg->nightlight.step      = 5;
+    strcpy(cfg->nightlight.curve, "ease");
 
     /* ── Load from file ── */
     char path[512];
@@ -195,6 +213,7 @@ void config_load(Config *cfg) {
             else if (!strcmp(key, "foreground"))   strcpy(cfg->colors.foreground,     val);
             else if (!strcmp(key, "dim_foreground")) strcpy(cfg->colors.dim_foreground, val);
             else if (!strcmp(key, "border"))       strcpy(cfg->colors.border,         val);
+            else if (!strcmp(key, "ring_color"))   strcpy(cfg->colors.ring_color,     val);
         } else if (!strcmp(section, "font")) {
             if      (!strcmp(key, "family")) strcpy(cfg->font.family, val);
             else if (!strcmp(key, "size"))   cfg->font.size = atoi(val);
@@ -238,7 +257,15 @@ void config_load(Config *cfg) {
                 }
             } else if (!strcmp(key, "use_bars"))   cfg->metrics.use_bars = (!strcmp(val, "true"));
             else if  (!strcmp(key, "temp_path"))   strcpy(cfg->metrics.temp_path, val);
+        } else if (!strcmp(section, "nightlight")) {
+            if      (!strcmp(key, "temp_max"))  cfg->nightlight.temp_max  = atoi(val);
+            else if (!strcmp(key, "temp_min"))  cfg->nightlight.temp_min  = atoi(val);
+            else if (!strcmp(key, "gamma_max")) cfg->nightlight.gamma_max = atof(val);
+            else if (!strcmp(key, "gamma_min")) cfg->nightlight.gamma_min = atof(val);
+            else if (!strcmp(key, "step"))      cfg->nightlight.step      = atoi(val);
+            else if (!strcmp(key, "curve"))     strncpy(cfg->nightlight.curve, val, sizeof(cfg->nightlight.curve)-1);
         }
+
     }
     fclose(f);
 }

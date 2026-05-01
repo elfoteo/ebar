@@ -134,19 +134,27 @@ void apply_global_css(AppState *state) {
       "  min-height: 3px; min-width: 55px; margin: 2px 12px; padding: 0; } ");
     A(".metric-label { font-size: 12px; color: %s; margin: 0 8px; } ", cfg->colors.foreground);
 
-    /* volume – original values */
-    A(".volume-btn { margin-right: 15px; background-color: rgba(0,0,0,0.2); "
-      "  padding-left: 10px; padding-right: 15px; border-radius: 20px; color: %s; } ",
-      cfg->colors.foreground);
-    A(".volume-btn label { font-size: %s; } ", vol_label_size);
+    /* volume – transparent pill behind ring; icon centred inside 48×48 overlay */
+    A(".volume-btn { background-color: transparent; border-radius: 999px; "
+      "  padding: 0; margin: 0 10px; font-size: %s; color: %s; } ",
+      vol_label_size, cfg->colors.foreground);
+    A(".volume-btn.vol-high { margin-left: 6px; } "); /* nerdfont icon isn't centered */
+
+    /* nightlight */
+    A(".nightlight-btn { background-color: transparent; border-radius: 999px; "
+      "  padding: 0; margin: 0 6px; font-size: 20px; color: %s; } ",
+      cfg->colors.dim_foreground);
+    A(".nightlight-btn.nightlight-on { color: %s; margin-left: 4px; margin-top: -1px; } ",
+      cfg->colors.foreground); /* nudged moon, I hate nerdfont for not centering it's icons */
+    A(".nightlight-btn.nightlight-error { color: #e05555; } ");
 
     /* media */
-    A(".media-box { margin-left: 10px; background-color: %s; "
+    A(".media-box { background-color: %s; "
       "  padding: 0 %dpx; border-radius: 20px; } ",
       cfg->media.background ? "rgba(0,0,0,0.2)" : "transparent",
       cfg->media.background ? 5 : 0);
-    A(".media-box button { color: %s; background: none; font-size: 16px; "
-      "  padding: 0 8px; min-height: 24px; } ", cfg->colors.foreground);
+    A(".media-box button { color: %s; background: none; font-size: 22px; "
+      "  padding: 0 4px; margin: 0 8px; min-height: 24px; } ", cfg->colors.foreground);
     A(".media-box button:hover, .media-box button:hover label { color: %s; } ", cfg->colors.accent);
     A(".media-title-label { font-size: 12px; color: %s; "
       "  margin-right: 12px; margin-left: 4px; } ",
@@ -183,6 +191,7 @@ static void add_widgets_to_box(GtkWidget *box, const char *csv,
         else if (!strcmp(tok, "media"))      w = widget_media(bw, state);
         else if (!strcmp(tok, "volume"))     w = widget_volume(bw, state);
         else if (!strcmp(tok, "metrics"))    w = widget_metrics(bw, state);
+        else if (!strcmp(tok, "nightlight")) w = widget_nightlight(bw, state);
 
         if (w) gtk_box_pack_start(GTK_BOX(box), w, FALSE, FALSE, 0);
         tok = strtok_r(NULL, ",", &sp);
@@ -234,9 +243,9 @@ void create_bar_window(GdkMonitor *monitor, AppState *state) {
     /* NOTE: no size_request – bar height is driven by content, not forced */
 
     /* Three section boxes */
-    bw->left_box   = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    bw->center_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    bw->right_box  = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    bw->left_box   = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, state->config.spacing);
+    bw->center_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, state->config.spacing);
+    bw->right_box  = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, state->config.spacing);
 
     add_widgets_to_box(bw->left_box,   state->config.left.widgets,   bw, state);
     add_widgets_to_box(bw->center_box, state->config.center.widgets, bw, state);
@@ -276,8 +285,6 @@ void create_bar_window(GdkMonitor *monitor, AppState *state) {
 
         gtk_container_add(GTK_CONTAINER(l_wrap), bw->left_box);
         gtk_container_add(GTK_CONTAINER(c_wrap), bw->center_box);
-        gtk_container_add(GTK_CONTAINER(r_wrap), bw->right_box);
-
         gtk_container_add(GTK_CONTAINER(r_wrap), bw->right_box);
 
         g_signal_connect(l_wrap, "draw", G_CALLBACK(on_island_draw), state);

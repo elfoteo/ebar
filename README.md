@@ -17,6 +17,8 @@ A beautiful, modular, and customizable Hyprland bar written in C with GTK3 and L
     - Nerd Font integration for premium iconography.
 - **Dynamic Metrics**: Real-time polling for CPU, RAM, GPU, Disk, and Temperature.
 - **Media Player**: Integrated support for `playerctl` with configurable metadata visibility.
+- **Volume Widget**: Circular progress ring around the volume icon; scroll anywhere on it to adjust level. Smooth-scroll (trackpad) supported.
+- **Nightlight Widget**: Toggle-based night light control via `hyprsunset`; scroll to adjust intensity along a configurable curve.
 
 ## Requirements
 
@@ -43,6 +45,14 @@ sudo pacman -S ttf-jetbrains-mono-nerd
 - `playerctl`: Media metadata and controls.
 - `nvidia-smi`: Optional, for GPU metrics.
 
+### Optional (nightlight widget)
+- **`hyprsunset`**: Must be installed and running. Add to your `hyprland.conf`:
+  ```hyprlang
+  exec-once = hyprsunset
+  ```
+  ebar communicates with it directly via the hyprsunset IPC socket — no `hyprctl` process is spawned.
+  If the socket is unreachable the nightlight icon turns **red** as a visual cue.
+
 ## Installation and Usage
 
 1. **Build**:
@@ -63,7 +73,7 @@ sudo pacman -S ttf-jetbrains-mono-nerd
 
 ## Configuration
 
-The configuration file allows you to tweak every aspect of the bar. 
+The configuration file allows you to tweak every aspect of the bar.
 
 ### How to Blur
 If you want to add blur to the bar on Hyprland, add the following to your `hyprland.conf`:
@@ -90,6 +100,7 @@ background      = rgba(0,0,0,0.2)
 accent          = #D35D6E
 foreground      = #ffffff
 dim_foreground  = rgba(255,255,255,0.6)
+ring_color      = rgba(255,255,255,0.9) # colour of circular progress rings (volume + nightlight)
 
 [font]
 family          = JetBrainsMonoNerdFont
@@ -97,19 +108,19 @@ size            = 13
 
 [workspaces]
 count           = 10
-icon_empty      = 
-icon_occupied   = 
+icon_empty      = 
+icon_occupied   = 
 show_empty      = true
 
 [left]
-# Options: workspaces, clock, media, volume, metrics
+# Options: workspaces, clock, media, volume, metrics, nightlight
 widgets         = workspaces
 
 [center]
 widgets         = media
 
 [right]
-widgets         = metrics, volume, clock
+widgets         = metrics, volume, nightlight, clock
 
 [clock]
 time_format     = %H:%M
@@ -130,7 +141,35 @@ show_percent    = false
 layout          = ram cpu ; disk temp
 use_bars        = true
 temp_path       = auto
+
+[nightlight]
+# Requires hyprsunset running (exec-once = hyprsunset in hyprland.conf)
+temp_max        = 6500   # white-point temperature (K) — identity value when off
+temp_min        = 5400   # warm night temperature (K) — applied at level 100
+gamma_max       = 100    # full brightness gamma
+gamma_min       = 75     # reduced gamma at maximum nightlight level
+step            = 5      # level change per scroll tick (range 0–100)
+curve           = ease   # ease (smoothstep) | linear
 ```
+
+### Nightlight Widget
+
+| State | Icon | Ring |
+|---|---|---|
+| Off | `` (sun, dim) | Hidden |
+| On | `` (moon, full brightness) | Visible — reflects current level |
+| IPC error | `` (sun, **red**) | — |
+
+**Interaction:**
+- **Left-click**: Toggle on/off. First toggle starts at **15%** of the curve. Turning off resets hyprsunset to identity (`temperature 6500`, `gamma 100`).
+- **Scroll**: Adjusts the nightlight *level* (0–100) by `step` per tick. Both temperature and gamma are derived from the same level value via the curve, so a single scroll adjusts both simultaneously. Smooth-scroll (trackpad) is supported.
+
+**Curve functions** (`curve = ease` recommended):
+
+| Mode | Behaviour |
+|---|---|
+| `ease` | Smoothstep — subtle at low levels, stronger near the top |
+| `linear` | Straight-line interpolation between min and max |
 
 ## License
 MIT

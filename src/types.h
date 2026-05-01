@@ -44,6 +44,7 @@ typedef struct {
         char foreground[32];
         char dim_foreground[32];
         char border[32];
+        char ring_color[32];   /* circular progress ring colour (volume + nightlight) */
     } colors;
 
     struct {
@@ -84,6 +85,15 @@ typedef struct {
         int use_bars;
         char temp_path[256];
     } metrics;
+
+    struct {
+        int    temp_max;    /* identity temp (K), default 6500   */
+        int    temp_min;    /* warm temp (K),     default 5400   */
+        double gamma_max;   /* identity gamma,    default 100.0  */
+        double gamma_min;   /* warm gamma,        default 75.0   */
+        int    step;        /* level change per scroll tick, 5   */
+        char   curve[16];  /* "linear" | "ease"                 */
+    } nightlight;
 } Config;
 
 typedef struct {
@@ -95,6 +105,9 @@ typedef struct {
     int is_playing;
     char media_title[256];
     char media_artist[256];
+    int  nightlight_on;     /* 0 = off, 1 = on           */
+    int  nightlight_level;  /* 0-100 curve position      */
+    int  nightlight_error;  /* 1 = last IPC call failed  */
 } SystemData;
 
 typedef struct {
@@ -105,6 +118,9 @@ typedef struct {
     GtkWidget *clock_date_label;
     GtkWidget *metrics_widgets[6];
     GtkWidget *volume_btn;
+    GtkWidget *volume_ring;
+    GtkWidget *nightlight_btn;
+    GtkWidget *nightlight_ring;
     GtkWidget *media_play_btn;
     GtkWidget *media_title_label;
     GtkWidget *media_artist_label;

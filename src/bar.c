@@ -143,10 +143,12 @@ void apply_global_css(AppState *state) {
     /* nightlight */
     A(".nightlight-btn { background-color: transparent; border-radius: 999px; "
       "  padding: 0; margin: 0 6px; font-size: 20px; color: %s; } ",
-      cfg->colors.dim_foreground);
-    A(".nightlight-btn.nightlight-on { color: %s; margin-left: 4px; margin-top: -1px; } ",
-      cfg->colors.foreground); /* nudged moon, I hate nerdfont for not centering it's icons */
-    A(".nightlight-btn.nightlight-error { color: #e05555; } ");
+      cfg->colors.foreground);
+    
+    /* nudged moon, I hate nerdfont for not centering it's icons */
+    A(".nightlight-btn.nightlight-on { margin-left: 4px; margin-top: -1px; } ");
+    A(".nightlight-btn.nightlight-off { margin-left: 3px; margin-top: -1px; } ");
+    A(".nightlight-btn.nightlight-error { color: #e05555; margin-left: 4px; margin-top: -1px; } ");
 
     /* media */
     A(".media-box { background-color: %s; "

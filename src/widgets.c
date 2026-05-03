@@ -305,11 +305,8 @@ static void nightlight_reset(AppState *state) {
 static gboolean on_nightlight_ring_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     AppState *state = (AppState *)data;
     pthread_mutex_lock(&state->mutex);
-    int nl_on    = state->sys_data.nightlight_on;
     int nl_level = state->sys_data.nightlight_level;
     pthread_mutex_unlock(&state->mutex);
-
-    if (!nl_on) return FALSE; /* ring is invisible when off */
 
     GtkAllocation alloc;
     gtk_widget_get_allocation(widget, &alloc);
@@ -345,15 +342,20 @@ static gboolean on_nightlight_scroll(GtkWidget *widget, GdkEventScroll *event, g
     (void)widget;
     AppState *state = (AppState *)data;
     pthread_mutex_lock(&state->mutex);
-    if (!state->sys_data.nightlight_on) { pthread_mutex_unlock(&state->mutex); return TRUE; }
     double delta = 0;
     if      (event->direction == GDK_SCROLL_UP)     delta =  state->config.nightlight.step;
     else if (event->direction == GDK_SCROLL_DOWN)   delta = -state->config.nightlight.step;
     else if (event->direction == GDK_SCROLL_SMOOTH) delta = -event->delta_y * state->config.nightlight.step;
-    state->sys_data.nightlight_level =
-        (int)CLAMP(state->sys_data.nightlight_level + delta, 0, 100);
+
+    int old_level = state->sys_data.nightlight_level;
+    state->sys_data.nightlight_level = (int)CLAMP(old_level + delta, 0, 100);
+    int new_level = state->sys_data.nightlight_level;
+    state->sys_data.nightlight_on = (new_level > 0);
     pthread_mutex_unlock(&state->mutex);
-    nightlight_apply(state);
+
+    if (new_level > 0) nightlight_apply(state);
+    else if (old_level > 0) nightlight_reset(state);
+
     update_widgets_idle(state);
     return TRUE;
 }
@@ -363,12 +365,17 @@ static gboolean on_nightlight_click(GtkWidget *widget, GdkEventButton *event, gp
     if (event->button != 1) return TRUE;
     AppState *state = (AppState *)data;
     pthread_mutex_lock(&state->mutex);
-    state->sys_data.nightlight_on = !state->sys_data.nightlight_on;
-    if (state->sys_data.nightlight_on && state->sys_data.nightlight_level == 0)
-        state->sys_data.nightlight_level = 15; /* first toggle: 15% of curve */
-    pthread_mutex_unlock(&state->mutex);
-    if (state->sys_data.nightlight_on) nightlight_apply(state);
-    else                               nightlight_reset(state);
+    if (state->sys_data.nightlight_level > 0) {
+        state->sys_data.nightlight_level = 0;
+        state->sys_data.nightlight_on = 0;
+        pthread_mutex_unlock(&state->mutex);
+        nightlight_reset(state);
+    } else {
+        state->sys_data.nightlight_level = 15; /* default toggle: 15% of curve */
+        state->sys_data.nightlight_on = 1;
+        pthread_mutex_unlock(&state->mutex);
+        nightlight_apply(state);
+    }
     update_widgets_idle(state);
     return TRUE;
 }
@@ -533,21 +540,21 @@ gboolean update_widgets_idle(gpointer data) {
         }
         if (bw->volume_ring) gtk_widget_queue_draw(bw->volume_ring);
 
-        /* Nightlight – 󰖙 sun (off) / 󰖔 moon (on) */
+        /* Nightlight –  sun (0%) / 󰖔 moon (>0%) */
         int nl_error = d.nightlight_error;
-        const char *nl_icon = d.nightlight_on
-            ? "󰖔"   /* 󰖔 nf-md-weather_night  U+F0194 */
-            : "󰖙";  /* 󰖙 nf-md-weather_sunny  U+F0199 */
-        if (nl_error)
-            nl_icon = "󰖙"; /* same sun, CSS turns it red */
+        int nl_active = (d.nightlight_level > 0);
+        const char *nl_icon = nl_active ? "󰖔" : "󰖙";
 
         if (bw->nightlight_btn) {
             gtk_label_set_text(GTK_LABEL(bw->nightlight_btn), nl_icon);
             GtkStyleContext *nlctx = gtk_widget_get_style_context(bw->nightlight_btn);
-            if (d.nightlight_on && !nl_error)
+            if (nl_active && !nl_error) {
                 gtk_style_context_add_class(nlctx, "nightlight-on");
-            else
+                gtk_style_context_remove_class(nlctx, "nightlight-off");
+            } else {
                 gtk_style_context_remove_class(nlctx, "nightlight-on");
+                gtk_style_context_add_class(nlctx, "nightlight-off");
+            }
             if (nl_error)
                 gtk_style_context_add_class(nlctx, "nightlight-error");
             else

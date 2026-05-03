@@ -231,6 +231,24 @@ GtkWidget *widget_volume(BarWindow *bw, AppState *state) {
 
 /* ── Nightlight helpers ─────────────────────────────────────────────────── */
 
+static void nightlight_save_state(int level) {
+    if (level <= 0) return;
+    FILE *f = fopen("/tmp/ebar_nightlight", "w");
+    if (f) {
+        fprintf(f, "%d", level);
+        fclose(f);
+    }
+}
+
+static int nightlight_load_state() {
+    FILE *f = fopen("/tmp/ebar_nightlight", "r");
+    if (!f) return 0;
+    int level = 0;
+    if (fscanf(f, "%d", &level) != 1) level = 0;
+    fclose(f);
+    return level;
+}
+
 /* Send a command to the hyprsunset IPC socket.
  * Returns 0 on success, -1 on failure (socket not found / connect error). */
 static int nightlight_ipc(const char *cmd) {
@@ -351,6 +369,10 @@ static gboolean on_nightlight_scroll(GtkWidget *widget, GdkEventScroll *event, g
     state->sys_data.nightlight_level = (int)CLAMP(old_level + delta, 0, 100);
     int new_level = state->sys_data.nightlight_level;
     state->sys_data.nightlight_on = (new_level > 0);
+    if (new_level > 0) {
+        state->sys_data.nightlight_last_level = new_level;
+        nightlight_save_state(new_level);
+    }
     pthread_mutex_unlock(&state->mutex);
 
     if (new_level > 0) nightlight_apply(state);
@@ -371,7 +393,10 @@ static gboolean on_nightlight_click(GtkWidget *widget, GdkEventButton *event, gp
         pthread_mutex_unlock(&state->mutex);
         nightlight_reset(state);
     } else {
-        state->sys_data.nightlight_level = 15; /* default toggle: 15% of curve */
+        int last = state->sys_data.nightlight_last_level;
+        if (last <= 0) last = nightlight_load_state();
+        if (last <= 0) last = 15;
+        state->sys_data.nightlight_level = last;
         state->sys_data.nightlight_on = 1;
         pthread_mutex_unlock(&state->mutex);
         nightlight_apply(state);
@@ -381,6 +406,11 @@ static gboolean on_nightlight_click(GtkWidget *widget, GdkEventButton *event, gp
 }
 
 GtkWidget *widget_nightlight(BarWindow *bw, AppState *state) {
+    pthread_mutex_lock(&state->mutex);
+    if (state->sys_data.nightlight_last_level <= 0)
+        state->sys_data.nightlight_last_level = nightlight_load_state();
+    pthread_mutex_unlock(&state->mutex);
+
     GtkWidget *evbox = gtk_event_box_new();
     gtk_event_box_set_above_child(GTK_EVENT_BOX(evbox), TRUE);
     gtk_widget_set_valign(evbox, GTK_ALIGN_CENTER);

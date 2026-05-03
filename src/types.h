@@ -107,6 +107,7 @@ typedef struct {
     char media_artist[256];
     int  nightlight_on;     /* 0 = off, 1 = on           */
     int  nightlight_level;  /* 0-100 curve position      */
+    int  nightlight_last_level; /* remembered level for toggle */
     int  nightlight_error;  /* 1 = last IPC call failed  */
 } SystemData;
 

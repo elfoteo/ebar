@@ -127,6 +127,8 @@ typedef struct {
 
 typedef struct {
     GtkWidget *window;
+    GdkMonitor *monitor;
+    int has_fullscreen;
     GtkWidget *main_container;
     GtkWidget *ws_labels[MAX_WORKSPACES];
     GtkWidget *clock_time_label;
@@ -163,6 +165,7 @@ typedef struct {
     SystemData sys_data;
     time_t last_manual_vol_update;
     Config config;
+    int has_fullscreen;  /* 1 when a fullscreen window is active */
 } AppState;
 
 #endif

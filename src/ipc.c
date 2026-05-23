@@ -1,4 +1,5 @@
 #include "ipc.h"
+#include "bar.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,23 @@ extern gboolean update_widgets_idle(gpointer data);
 
 static gboolean update_ws_idle(gpointer data) {
     update_workspace_display((AppState *)data);
+    return G_SOURCE_REMOVE;
+}
+
+static gboolean fullscreen_css_idle(gpointer data) {
+    AppState *w = (AppState *)data;
+    pthread_mutex_lock(&w->mutex);
+    for (GList *l = w->bar_windows; l != NULL; l = l->next) {
+        BarWindow *bw = (BarWindow *)l->data;
+        if (bw->monitor) {
+            GdkRectangle geom;
+            gdk_monitor_get_geometry(bw->monitor, &geom);
+            bw->has_fullscreen = check_fullscreen_on_monitor(geom.x, geom.y);
+        }
+    }
+    pthread_mutex_unlock(&w->mutex);
+
+    apply_global_css(w);
     return G_SOURCE_REMOVE;
 }
 
@@ -45,6 +63,97 @@ static char *hyprctl_request(const char *cmd) {
     buf[total] = '\0';
     close(fd);
     return buf;
+}
+
+static int get_json_int_from(const char *obj, const char *key, const char *end_obj) {
+    const char *p = strstr(obj, key);
+    if (!p || (end_obj && p >= end_obj)) return -1;
+    p += strlen(key);
+    while (*p == ' ' || *p == ':' || *p == '\t' || *p == '{' || *p == '"') p++;
+    return atoi(p);
+}
+
+int check_fullscreen_on_monitor(int x, int y) {
+    FILE *log = fopen("/tmp/ebar_debug.log", "a");
+    if (log) {
+        fprintf(log, "\n--- check_fullscreen_on_monitor(x=%d, y=%d) ---\n", x, y);
+    }
+
+    char *monitors = hyprctl_request("j/monitors");
+    if (!monitors) {
+        if (log) {
+            fprintf(log, "FAILED to get monitors!\n");
+            fclose(log);
+        }
+        return 0;
+    }
+
+    int active_ws = -1;
+    const char *p = monitors;
+    while ((p = strstr(p, "\"name\":"))) {
+        const char *next_mon = strstr(p + 7, "\"name\":");
+        int mx = get_json_int_from(p, "\"x\"", next_mon);
+        int my = get_json_int_from(p, "\"y\"", next_mon);
+        if (log) {
+            fprintf(log, "Parsed monitor: mx=%d, my=%d\n", mx, my);
+        }
+        if (mx == x && my == y) {
+            const char *aw = strstr(p, "\"activeWorkspace\"");
+            if (aw && (!next_mon || aw < next_mon)) {
+                active_ws = get_json_int_from(aw, "\"id\"", next_mon);
+            }
+            if (log) {
+                fprintf(log, "MATCHED monitor! activeWorkspace ID = %d\n", active_ws);
+            }
+            break;
+        }
+        p += 7;
+    }
+    free(monitors);
+
+    if (active_ws == -1) {
+        if (log) {
+            fprintf(log, "active_ws == -1, returning 0\n");
+            fclose(log);
+        }
+        return 0;
+    }
+
+    char *clients = hyprctl_request("j/clients");
+    if (!clients) {
+        if (log) {
+            fprintf(log, "FAILED to get clients!\n");
+            fclose(log);
+        }
+        return 0;
+    }
+
+    int has_fs = 0;
+    p = clients;
+    while ((p = strstr(p, "\"address\":"))) {
+        const char *next_client = strstr(p + 10, "\"address\":");
+        const char *ws = strstr(p, "\"workspace\"");
+        if (ws && (!next_client || ws < next_client)) {
+            int ws_id = get_json_int_from(ws, "\"id\"", next_client);
+            if (ws_id == active_ws) {
+                int fs = get_json_int_from(p, "\"fullscreen\"", next_client);
+                if (log) {
+                    fprintf(log, "Client on ws %d: fullscreen status = %d\n", ws_id, fs);
+                }
+                if (fs > 0) {
+                    has_fs = 1;
+                    break;
+                }
+            }
+        }
+        p += 10;
+    }
+    free(clients);
+    if (log) {
+        fprintf(log, "Final result: has_fs = %d\n", has_fs);
+        fclose(log);
+    }
+    return has_fs;
 }
 
 /* ── keyboard layout helpers ───────────────────────────────────────────────── */
@@ -250,6 +359,13 @@ static void handle_ipc_line(AppState *w, char *line) {
     } else if (strncmp(line, "activelayout>>", 14) == 0) {
         /* activelayout>>keyboard_name,Layout Display Name */
         g_idle_add(layout_idle, w);
+    } else if (strncmp(line, "fullscreen>>", 12) == 0) {
+        /* fullscreen>>1 = entered fullscreen, fullscreen>>0 = left fullscreen */
+        int fs = atoi(line + 12);
+        pthread_mutex_lock(&w->mutex);
+        w->has_fullscreen = fs;
+        pthread_mutex_unlock(&w->mutex);
+        g_idle_add(fullscreen_css_idle, w);
     }
 }
 

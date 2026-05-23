@@ -5,5 +5,6 @@
 
 void *ipc_thread_func(void *data);
 void sync_initial_state(AppState *w);
+int check_fullscreen_on_monitor(int x, int y);
 
 #endif

@@ -20,8 +20,9 @@ void config_save_default(const char *path) {
 
     fprintf(f, "[bar]\n");
     fprintf(f, "position        = bottom          # top | bottom\n");
-    fprintf(f, "mode            = normal          # normal | floating | island\n");
+    fprintf(f, "mode            = normal          # normal | floating | island | chromeos\n");
     fprintf(f, "margin          = 8               # outer gap in px (used when floating)\n");
+    fprintf(f, "height          = 36              # bar height in px\n");
     fprintf(f, "border_radius   = 12              # corner radius px (floating / island)\n");
     fprintf(f, "padding_h       = 12              # horizontal inner padding px\n");
     fprintf(f, "padding_v       = 5               # vertical inner padding px\n");
@@ -33,6 +34,7 @@ void config_save_default(const char *path) {
     fprintf(f, "accent          = #D35D6E\n");
     fprintf(f, "foreground      = #ffffff\n");
     fprintf(f, "dim_foreground  = rgba(255,255,255,0.6)\n");
+    fprintf(f, "border          = rgba(255,255,255,0.2) # pill / container border colour\n");
     fprintf(f, "ring_color      = rgba(255,255,255,0.9) # colour of circular progress rings\n\n");
 
     fprintf(f, "[font]\n");

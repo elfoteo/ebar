@@ -11,11 +11,6 @@
 extern void update_workspace_display(AppState *w);
 extern gboolean update_widgets_idle(gpointer data);
 
-static gboolean update_ws_idle(gpointer data) {
-    update_workspace_display((AppState *)data);
-    return G_SOURCE_REMOVE;
-}
-
 static gboolean fullscreen_css_idle(gpointer data) {
     AppState *w = (AppState *)data;
     pthread_mutex_lock(&w->mutex);
@@ -30,6 +25,12 @@ static gboolean fullscreen_css_idle(gpointer data) {
     pthread_mutex_unlock(&w->mutex);
 
     apply_global_css(w);
+    return G_SOURCE_REMOVE;
+}
+
+static gboolean update_ws_idle(gpointer data) {
+    update_workspace_display((AppState *)data);
+    fullscreen_css_idle(data);
     return G_SOURCE_REMOVE;
 }
 
@@ -129,6 +130,7 @@ int check_fullscreen_on_monitor(int x, int y) {
     }
 
     int has_fs = 0;
+    int client_count = 0;
     p = clients;
     while ((p = strstr(p, "\"address\":"))) {
         const char *next_client = strstr(p + 10, "\"address\":");
@@ -136,24 +138,28 @@ int check_fullscreen_on_monitor(int x, int y) {
         if (ws && (!next_client || ws < next_client)) {
             int ws_id = get_json_int_from(ws, "\"id\"", next_client);
             if (ws_id == active_ws) {
+                client_count++;
                 int fs = get_json_int_from(p, "\"fullscreen\"", next_client);
                 if (log) {
                     fprintf(log, "Client on ws %d: fullscreen status = %d\n", ws_id, fs);
                 }
                 if (fs > 0) {
                     has_fs = 1;
-                    break;
                 }
             }
         }
         p += 10;
     }
     free(clients);
+
+    int should_flatten = (has_fs || client_count == 1);
+
     if (log) {
-        fprintf(log, "Final result: has_fs = %d\n", has_fs);
+        fprintf(log, "Workspace %d: client_count = %d, has_fs = %d, should_flatten = %d\n",
+                active_ws, client_count, has_fs, should_flatten);
         fclose(log);
     }
-    return has_fs;
+    return should_flatten;
 }
 
 /* ── keyboard layout helpers ───────────────────────────────────────────────── */

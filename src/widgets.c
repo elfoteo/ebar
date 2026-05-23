@@ -579,6 +579,46 @@ void update_metric_widget(GtkWidget *widget, MetricType type, SystemData *d, int
     }
 }
 
+static int get_battery_capacity(void) {
+    for (int i = 0; i < 3; i++) {
+        char path[128];
+        snprintf(path, sizeof(path), "/sys/class/power_supply/BAT%d/capacity", i);
+        FILE *f = fopen(path, "r");
+        if (f) {
+            int cap = 0;
+            if (fscanf(f, "%d", &cap) == 1) {
+                fclose(f);
+                return cap;
+            }
+            fclose(f);
+        }
+    }
+    FILE *f = fopen("/sys/class/power_supply/UBDG/capacity", "r");
+    if (f) {
+        int cap = 0;
+        if (fscanf(f, "%d", &cap) == 1) {
+            fclose(f);
+            return cap;
+        }
+        fclose(f);
+    }
+    return -1;
+}
+
+static const char *get_battery_icon(int cap) {
+    if (cap < 0) return "󰁹";
+    if (cap <= 10) return "󰁺";
+    if (cap <= 20) return "󰁻";
+    if (cap <= 30) return "󰁼";
+    if (cap <= 40) return "󰁽";
+    if (cap <= 50) return "󰁾";
+    if (cap <= 60) return "󰁿";
+    if (cap <= 70) return "󰂀";
+    if (cap <= 80) return "󰂁";
+    if (cap <= 90) return "󰂂";
+    return "󰁹";
+}
+
 gboolean update_widgets_idle(gpointer data) {
     AppState *w = (AppState *)data;
     pthread_mutex_lock(&w->mutex);
@@ -600,7 +640,9 @@ gboolean update_widgets_idle(gpointer data) {
         if (bw->cb_sys_label) {
             char sys_buf[64], t_buf[32];
             strftime(t_buf, sizeof(t_buf), "%-I:%M", &tmv);
-            snprintf(sys_buf, sizeof(sys_buf), "%s  󰤨  󰁹", t_buf);
+            int cap = get_battery_capacity();
+            const char *b_icon = get_battery_icon(cap);
+            snprintf(sys_buf, sizeof(sys_buf), "%s  󰤨  %s", t_buf, b_icon);
             gtk_label_set_text(GTK_LABEL(bw->cb_sys_label), sys_buf);
         }
         if (bw->cb_layout_label && d.kb_layout[0])

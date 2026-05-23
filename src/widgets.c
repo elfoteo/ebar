@@ -579,6 +579,36 @@ void update_metric_widget(GtkWidget *widget, MetricType type, SystemData *d, int
     }
 }
 
+/* Read link quality (0-70) from /proc/net/wireless; returns -1 if no wifi. */
+static int get_wifi_strength(void) {
+    FILE *f = fopen("/proc/net/wireless", "r");
+    if (!f) return -1;
+    char line[256];
+    /* Skip the two header lines */
+    fgets(line, sizeof(line), f);
+    fgets(line, sizeof(line), f);
+    /* First actual interface line */
+    if (!fgets(line, sizeof(line), f)) { fclose(f); return -1; }
+    fclose(f);
+    /* Format: "  wlo1: 0000  64.  -46.  -256. ..." */
+    char *colon = strchr(line, ':');
+    if (!colon) return -1;
+    int status, link;
+    if (sscanf(colon + 1, " %d %d.", &status, &link) < 2) return -1;
+    return link; /* 0-70 */
+}
+
+static const char *get_wifi_icon(void) {
+    int q = get_wifi_strength();
+    if (q < 0) return "󰤭";
+    if (q == 0) return "󰤟";
+    if (q <= 17) return "󰤟";
+    if (q <= 34) return "󰤢";
+    if (q <= 51) return "󰤥";
+    if (q <= 65) return "󰤨";
+    return "󰤨";
+}
+
 static int get_battery_capacity(void) {
     for (int i = 0; i < 3; i++) {
         char path[128];
@@ -642,7 +672,8 @@ gboolean update_widgets_idle(gpointer data) {
             strftime(t_buf, sizeof(t_buf), "%-I:%M", &tmv);
             int cap = get_battery_capacity();
             const char *b_icon = get_battery_icon(cap);
-            snprintf(sys_buf, sizeof(sys_buf), "%s  󰤨  %s", t_buf, b_icon);
+            const char *w_icon = get_wifi_icon();
+            snprintf(sys_buf, sizeof(sys_buf), "%s  %s  %s", t_buf, w_icon, b_icon);
             gtk_label_set_text(GTK_LABEL(bw->cb_sys_label), sys_buf);
         }
         if (bw->cb_layout_label && d.kb_layout[0])

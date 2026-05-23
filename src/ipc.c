@@ -1,4 +1,5 @@
 #include "ipc.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,12 +8,139 @@
 #include <unistd.h>
 
 extern void update_workspace_display(AppState *w);
+extern gboolean update_widgets_idle(gpointer data);
 
 static gboolean update_ws_idle(gpointer data) {
     update_workspace_display((AppState *)data);
     return G_SOURCE_REMOVE;
 }
 
+/* ── socket1 helper ────────────────────────────────────────────────────────── */
+/* Send a single request to Hyprland socket1 and return a malloc'd response.  */
+static char *hyprctl_request(const char *cmd) {
+    const char *runtime = getenv("XDG_RUNTIME_DIR");
+    const char *his = getenv("HYPRLAND_INSTANCE_SIGNATURE");
+    if (!runtime || !his) return NULL;
+
+    char path[256];
+    snprintf(path, sizeof(path), "%s/hypr/%s/.socket.sock", runtime, his);
+
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return NULL;
+
+    struct sockaddr_un sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sun_family = AF_UNIX;
+    strncpy(sa.sun_path, path, sizeof(sa.sun_path) - 1);
+
+    if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) { close(fd); return NULL; }
+    if (write(fd, cmd, strlen(cmd)) < 0)                     { close(fd); return NULL; }
+
+    char *buf = malloc(131072);
+    if (!buf) { close(fd); return NULL; }
+
+    size_t total = 0;
+    ssize_t n;
+    while ((n = read(fd, buf + total, 131072 - total - 1)) > 0) total += (size_t)n;
+    buf[total] = '\0';
+    close(fd);
+    return buf;
+}
+
+/* ── keyboard layout helpers ───────────────────────────────────────────────── */
+/* Extract a JSON string value after a given key (simple, no full JSON parser) */
+static int json_str(const char *haystack, const char *key, char *out, size_t outsz) {
+    const char *p = strstr(haystack, key);
+    if (!p) return 0;
+    p += strlen(key);
+    const char *q1 = strchr(p, '"');
+    if (!q1) return 0;
+    const char *q2 = strchr(q1 + 1, '"');
+    if (!q2) return 0;
+    size_t len = (size_t)(q2 - q1 - 1);
+    if (len >= outsz) len = outsz - 1;
+    memcpy(out, q1 + 1, len);
+    out[len] = '\0';
+    return 1;
+}
+
+/* Uppercase in-place */
+static void str_upper(char *s) {
+    for (; *s; s++) *s = (char)toupper((unsigned char)*s);
+}
+
+/* Query Hyprland for the active keyboard layout and store uppercase code.
+   Uses j/getoption for the layout list and j/devices for the active keymap. */
+static void fetch_layout_into(AppState *w) {
+    /* 1. Layout list: "us,es,fr,..." */
+    char *opt = hyprctl_request("j/getoption input:kb_layout");
+    if (!opt) return;
+
+    char layouts_str[256] = "";
+    json_str(opt, "\"str\":", layouts_str, sizeof(layouts_str));
+    free(opt);
+    if (!layouts_str[0]) return;
+
+    /* 2. Main keyboard active_keymap */
+    char *devs = hyprctl_request("j/devices");
+    if (!devs) return;
+
+    char active_keymap[128] = "";
+    /* Walk each keyboard object looking for "main": true */
+    const char *p = devs;
+    while ((p = strstr(p, "\"main\":"))) {
+        /* Check if value is true */
+        const char *val = p + 7;
+        while (*val == ' ') val++;
+        if (strncmp(val, "true", 4) == 0) {
+            /* Find active_keymap in the enclosing object — scan backward */
+            const char *obj = p;
+            while (obj > devs && *obj != '{') obj--;
+            json_str(obj, "\"active_keymap\":", active_keymap, sizeof(active_keymap));
+            break;
+        }
+        p++;
+    }
+    free(devs);
+    if (!active_keymap[0]) { strncpy(active_keymap, "English (US)", sizeof(active_keymap)-1); }
+
+    /* 3. Map known keymap display names to layout-list index */
+    int idx = 0;
+    if      (strstr(active_keymap, "Spanish"))         idx = 1;
+    else if (strstr(active_keymap, "French"))          idx = 2;
+    else if (strstr(active_keymap, "German"))          idx = 3;
+    else if (strstr(active_keymap, "Italian"))         idx = 4;
+    else if (strstr(active_keymap, "Portuguese"))      idx = 5;
+    /* Add more mappings as needed */
+
+    /* 4. Extract idx-th comma-delimited token */
+    char tmp[256];
+    strncpy(tmp, layouts_str, sizeof(tmp) - 1); tmp[sizeof(tmp)-1] = '\0';
+    char *tok = strtok(tmp, ",");
+    for (int i = 0; i < idx && tok; i++) tok = strtok(NULL, ",");
+    if (!tok) { tok = tmp; strncpy(tmp, layouts_str, sizeof(tmp)-1); tok = strtok(tmp, ","); }
+
+    /* Trim and uppercase */
+    while (tok && *tok == ' ') tok++;
+    char out[32] = "??";
+    if (tok) { strncpy(out, tok, sizeof(out) - 1); out[sizeof(out)-1] = '\0'; }
+    str_upper(out);
+
+    pthread_mutex_lock(&w->mutex);
+    strncpy(w->sys_data.kb_layout, out, sizeof(w->sys_data.kb_layout) - 1);
+    pthread_mutex_unlock(&w->mutex);
+}
+
+/* ── activelayout event ────────────────────────────────────────────────────── */
+/* activelayout>>keyboard_name,Layout Display Name
+   We just re-query to keep the index logic in one place. */
+static gboolean layout_idle(gpointer data) {
+    fetch_layout_into((AppState *)data);
+    update_widgets_idle(data);
+    return G_SOURCE_REMOVE;
+}
+
+/* ── initial state ─────────────────────────────────────────────────────────── */
 void sync_initial_state(AppState *w) {
     FILE *fp = popen("hyprctl monitors -j 2>/dev/null", "r");
     if (fp) {
@@ -58,8 +186,12 @@ void sync_initial_state(AppState *w) {
         free(buf);
         pclose(fp);
     }
+
+    /* Initial keyboard layout (no popen needed beyond here) */
+    fetch_layout_into(w);
 }
 
+/* ── IPC event dispatcher ──────────────────────────────────────────────────── */
 static void handle_ipc_line(AppState *w, char *line) {
     if (strncmp(line, "workspace>>", 11) == 0) {
         pthread_mutex_lock(&w->mutex);
@@ -115,9 +247,13 @@ static void handle_ipc_line(AppState *w, char *line) {
         g_free(addr);
         pthread_mutex_unlock(&w->mutex);
         g_idle_add(update_ws_idle, w);
+    } else if (strncmp(line, "activelayout>>", 14) == 0) {
+        /* activelayout>>keyboard_name,Layout Display Name */
+        g_idle_add(layout_idle, w);
     }
 }
 
+/* ── socket2 listener thread ───────────────────────────────────────────────── */
 void *ipc_thread_func(void *data) {
     AppState *w = (AppState *)data;
     const char *runtime = getenv("XDG_RUNTIME_DIR"), *his = getenv("HYPRLAND_INSTANCE_SIGNATURE");
@@ -128,7 +264,9 @@ void *ipc_thread_func(void *data) {
     while (1) {
         int fd = socket(AF_UNIX, SOCK_STREAM, 0);
         if (fd < 0) { sleep(1); continue; }
-        struct sockaddr_un addr = {.sun_family = AF_UNIX};
+        struct sockaddr_un addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
         strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
         if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) { close(fd); sleep(1); continue; }
 

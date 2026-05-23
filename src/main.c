@@ -15,6 +15,9 @@ int main(int argc, char **argv) {
     state->window_map = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 
     config_load(&state->config);
+    if (state->config.mode == MODE_CHROMEOS) {
+        strcpy(state->config.font.family, "Google Sans");
+    }
     sync_initial_state(state);
     apply_global_css(state);
 

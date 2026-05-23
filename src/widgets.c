@@ -440,6 +440,47 @@ GtkWidget *widget_nightlight(BarWindow *bw, AppState *state) {
     gtk_container_add(GTK_CONTAINER(evbox), overlay);
     return evbox;
 }
+static void on_launcher_clicked(GtkWidget *widget, gpointer data) {
+    (void)widget;
+    const char *action = (const char *)data;
+    if (!action || !*action) return;
+    if (fork() == 0) {
+        setsid();
+        execl("/bin/sh", "sh", "-c", action, NULL);
+        exit(1);
+    }
+}
+
+GtkWidget *widget_launcher(BarWindow *bw, AppState *state) {
+    (void)bw;
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+    gtk_style_context_add_class(gtk_widget_get_style_context(box), "launcher");
+    
+    for (int i = 0; i < state->config.launcher.count; i++) {
+        GtkWidget *btn = gtk_button_new();
+        gtk_button_set_relief(GTK_BUTTON(btn), GTK_RELIEF_NONE);
+        gtk_style_context_add_class(gtk_widget_get_style_context(btn), "cb-app-btn");
+
+        GError *err = NULL;
+        GdkPixbuf *pix = gdk_pixbuf_new_from_file_at_scale(state->config.launcher.apps[i].icon_path, 36, 36, TRUE, &err);
+        GtkWidget *img;
+        if (pix) {
+            img = gtk_image_new_from_pixbuf(pix);
+            g_object_unref(pix);
+        } else {
+            img = gtk_image_new_from_icon_name("application-x-executable", GTK_ICON_SIZE_DND);
+            if (err) g_error_free(err);
+        }
+        gtk_widget_set_halign(img, GTK_ALIGN_CENTER);
+        gtk_widget_set_valign(img, GTK_ALIGN_CENTER);
+
+        gtk_container_add(GTK_CONTAINER(btn), img);
+        g_signal_connect(btn, "clicked", G_CALLBACK(on_launcher_clicked), state->config.launcher.apps[i].action);
+
+        gtk_box_pack_start(GTK_BOX(box), btn, FALSE, FALSE, 0);
+    }
+    return box;
+}
 
 
 static GtkWidget *create_metric_box(const char *icon_str, GtkWidget **out_widget, int use_bars) {
@@ -485,6 +526,11 @@ void update_workspace_display(AppState *w) {
     pthread_mutex_lock(&w->mutex);
     for (GList *l = w->bar_windows; l != NULL; l = l->next) {
         BarWindow *bw = (BarWindow *)l->data;
+        if (bw->cb_desk_label) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "Desk %d", w->active_workspace);
+            gtk_label_set_text(GTK_LABEL(bw->cb_desk_label), buf);
+        }
         for (int i = 0; i < w->config.workspaces.count; i++) {
             if (!bw->ws_labels[i]) continue;
             int ws_id = i + 1;
@@ -541,14 +587,24 @@ gboolean update_widgets_idle(gpointer data) {
 
     time_t now = time(NULL);
     struct tm tmv = *localtime(&now);
-    char tstr[64], dstr[64];
+    char tstr[64], dstr[64], cb_dstr[64];
     strftime(tstr, sizeof(tstr), w->config.clock.time_format, &tmv);
     strftime(dstr, sizeof(dstr), w->config.clock.date_format, &tmv);
+    strftime(cb_dstr, sizeof(cb_dstr), "%b %-d", &tmv);
 
     for (GList *l = w->bar_windows; l != NULL; l = l->next) {
         BarWindow *bw = (BarWindow *)l->data;
         if (bw->clock_time_label) gtk_label_set_text(GTK_LABEL(bw->clock_time_label), tstr);
         if (bw->clock_date_label) gtk_label_set_text(GTK_LABEL(bw->clock_date_label), dstr);
+        if (bw->cb_date_label)    gtk_label_set_text(GTK_LABEL(bw->cb_date_label), cb_dstr);
+        if (bw->cb_sys_label) {
+            char sys_buf[64], t_buf[32];
+            strftime(t_buf, sizeof(t_buf), "%-I:%M", &tmv);
+            snprintf(sys_buf, sizeof(sys_buf), "%s  󰤨  󰁹", t_buf);
+            gtk_label_set_text(GTK_LABEL(bw->cb_sys_label), sys_buf);
+        }
+        if (bw->cb_layout_label && d.kb_layout[0])
+            gtk_label_set_text(GTK_LABEL(bw->cb_layout_label), d.kb_layout);
 
         for (int i = 0; i < 6; i++) update_metric_widget(bw->metrics_widgets[i], (MetricType)i, &d, w->config.metrics.use_bars);
 

@@ -11,6 +11,7 @@ A beautiful, modular, and customizable Hyprland bar written in C with GTK3 and L
     - **Normal**: Classic full-width bar.
     - **Floating**: Detached bar with margins and rounded corners.
     - **Island**: Each widget group is wrapped in its own "bubble" with a unique "melting" effect when anchored to the screen edge.
+    - **ChromeOS**: A prototype shelf bar mimicking ChromeOS aesthetics, featuring dynamic app launcher.
 - **Custom Aesthetics**:
     - Accent color support for metric bars and highlights.
     - Full control over transparency, margins, padding, and spacing.
@@ -87,7 +88,7 @@ layerrule = blur on, ignore_alpha 0.01, match:namespace ebar
 ```ini
 [bar]
 position        = bottom          # top | bottom
-mode            = island          # normal | floating | island
+mode            = island          # normal | floating | island | chromeos
 margin          = 8               # outer gap in px (used when floating)
 border_radius   = 12              # corner radius px (floating / island)
 padding_h       = 12              # horizontal inner padding px
@@ -113,7 +114,7 @@ icon_occupied   =
 show_empty      = true
 
 [left]
-# Options: workspaces, clock, media, volume, metrics, nightlight
+# Options: workspaces, clock, media, volume, metrics, nightlight, launcher
 widgets         = workspaces
 
 [center]
@@ -150,6 +151,13 @@ gamma_max       = 100    # full brightness gamma
 gamma_min       = 75     # reduced gamma at maximum nightlight level
 step            = 5      # level change per scroll tick (range 0–100)
 curve           = ease   # ease (smoothstep) | linear
+
+[launcher]
+# Format: app = action:icon_path
+# Icon path can be absolute or relative to ~/.config/ebar/
+# If the path is just an icon name (e.g. firefox), it will use the system theme icon
+app             = firefox:firefox.svg
+app             = alacritty:utilities-terminal
 ```
 
 ### Nightlight Widget

@@ -82,7 +82,12 @@ void config_save_default(const char *path) {
     fprintf(f, "gamma_max       = 100    # full brightness gamma\n");
     fprintf(f, "gamma_min       = 75     # reduced gamma at max level\n");
     fprintf(f, "step            = 5      # level change per scroll tick (0-100 range)\n");
-    fprintf(f, "curve           = ease   # ease | linear\n");
+    fprintf(f, "curve           = ease   # ease | linear\n\n");
+
+    fprintf(f, "[launcher]\n");
+    fprintf(f, "# Format: app = action:icon_path\n");
+    fprintf(f, "# Icon path can be absolute or relative to ~/.config/ebar/\n");
+    fprintf(f, "app             = firefox:firefox.svg\n\n");
 
     fclose(f);
 }
@@ -151,6 +156,8 @@ void config_load(Config *cfg) {
     cfg->nightlight.step      = 5;
     strcpy(cfg->nightlight.curve, "ease");
 
+    cfg->launcher.count = 0;
+
     /* ── Load from file ── */
     char path[512];
     const char *home = getenv("HOME");
@@ -199,6 +206,7 @@ void config_load(Config *cfg) {
             else if (!strcmp(key, "mode")) {
                 if      (!strcmp(val, "floating")) cfg->mode = MODE_FLOATING;
                 else if (!strcmp(val, "island"))   cfg->mode = MODE_ISLAND;
+                else if (!strcmp(val, "chromeos")) cfg->mode = MODE_CHROMEOS;
                 else                               cfg->mode = MODE_NORMAL;
             }
             else if (!strcmp(key, "margin"))        cfg->margin        = atoi(val);
@@ -264,6 +272,23 @@ void config_load(Config *cfg) {
             else if (!strcmp(key, "gamma_min")) cfg->nightlight.gamma_min = atof(val);
             else if (!strcmp(key, "step"))      cfg->nightlight.step      = atoi(val);
             else if (!strcmp(key, "curve"))     strncpy(cfg->nightlight.curve, val, sizeof(cfg->nightlight.curve)-1);
+        } else if (!strcmp(section, "launcher")) {
+            if (!strcmp(key, "app") && cfg->launcher.count < MAX_LAUNCHER_APPS) {
+                char *colon = strchr(val, ':');
+                if (colon) {
+                    *colon = '\0';
+                    strcpy(cfg->launcher.apps[cfg->launcher.count].action, val);
+                    char *icon_path = colon + 1;
+                    if (icon_path[0] == '/') {
+                        strcpy(cfg->launcher.apps[cfg->launcher.count].icon_path, icon_path);
+                    } else {
+                        snprintf(cfg->launcher.apps[cfg->launcher.count].icon_path,
+                                 sizeof(cfg->launcher.apps[0].icon_path), 
+                                 "%s/.config/ebar/%s", getenv("HOME"), icon_path);
+                    }
+                    cfg->launcher.count++;
+                }
+            }
         }
 
     }

@@ -6,6 +6,13 @@
 #include <time.h>
 
 #define MAX_WORKSPACES 10
+#define MAX_LAUNCHER_APPS 15
+
+typedef struct {
+    char action[128];
+    char icon_path[256];
+} LauncherApp;
+
 
 typedef enum {
     M_RAM = 0,
@@ -20,7 +27,8 @@ typedef enum {
 typedef enum {
     MODE_NORMAL,
     MODE_FLOATING,
-    MODE_ISLAND
+    MODE_ISLAND,
+    MODE_CHROMEOS
 } BarMode;
 
 typedef enum {
@@ -94,6 +102,11 @@ typedef struct {
         int    step;        /* level change per scroll tick, 5   */
         char   curve[16];  /* "linear" | "ease"                 */
     } nightlight;
+
+    struct {
+        LauncherApp apps[MAX_LAUNCHER_APPS];
+        int count;
+    } launcher;
 } Config;
 
 typedef struct {
@@ -109,6 +122,7 @@ typedef struct {
     int  nightlight_level;  /* 0-100 curve position      */
     int  nightlight_last_level; /* remembered level for toggle */
     int  nightlight_error;  /* 1 = last IPC call failed  */
+    char kb_layout[32];     /* active keyboard layout code, e.g. "US" */
 } SystemData;
 
 typedef struct {
@@ -131,6 +145,11 @@ typedef struct {
     GtkWidget *left_box;
     GtkWidget *center_box;
     GtkWidget *right_box;
+
+    GtkWidget *cb_desk_label;
+    GtkWidget *cb_date_label;
+    GtkWidget *cb_sys_label;
+    GtkWidget *cb_layout_label;
 
 } BarWindow;
 

@@ -12,7 +12,7 @@
 extern void update_workspace_display(AppState *w);
 extern gboolean update_widgets_idle(gpointer data);
 
-static char *hyprctl_request(const char *cmd);
+char *hyprctl_request(const char *cmd);
 int check_fullscreen_on_monitor_with_data(int x, int y, const char *monitors, const char *clients);
 
 static gboolean fullscreen_css_idle(gpointer data) {
@@ -46,7 +46,7 @@ static gboolean update_ws_idle(gpointer data) {
 
 /* ── socket1 helper ────────────────────────────────────────────────────────── */
 /* Send a single request to Hyprland socket1 and return a malloc'd response.  */
-static char *hyprctl_request(const char *cmd) {
+char *hyprctl_request(const char *cmd) {
     const char *runtime = getenv("XDG_RUNTIME_DIR");
     const char *his = getenv("HYPRLAND_INSTANCE_SIGNATURE");
     if (!runtime || !his) return NULL;

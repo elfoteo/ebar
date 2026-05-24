@@ -9,24 +9,41 @@
  * Standalone CSS for chromeos mode. Called on startup and whenever the
  * fullscreen state changes so the top corners can be flattened/restored.
  * ─────────────────────────────────────────────────────────────────────────── */
+
+static void on_desk_prev(GtkWidget *widget, gpointer data) {
+	(void)widget;
+	(void)data;
+	char *res = hyprctl_request("dispatch workspace e-1");
+	if (res)
+		free(res);
+}
+
+static void on_desk_next(GtkWidget *widget, gpointer data) {
+	(void)widget;
+	(void)data;
+	char *res = hyprctl_request("dispatch workspace e+1");
+	if (res)
+		free(res);
+}
+
 void apply_chromeos_css(AppState *state) {
 	char css[16384];
 	int n = 0;
 
 #define A(...) n += snprintf(css + n, (int)sizeof(css) - n, __VA_ARGS__)
 
-	A("* { font-family: \"%s\"; background: none; box-shadow: none; border: none; } ", state->config.font.family);
+	A("* { font-family: \"%s\"; font-weight: 600; background: none; box-shadow: none; border: none; } ", state->config.font.family);
 	A("window, .background { background-color: transparent; } ");
 
 	A(".cb-pill { background-color: #505153; color: #E8EAED; border-radius: 18px; "
-	  "  padding: 0 8px; font-size: 14px; font-weight: 500; min-height: 36px; } ");
+	  "  padding: 0 8px; font-size: 14px; font-weight: 600; min-height: 36px; } ");
 	A(".cb-pill:hover { background-color: #616264; } ");
 	/* Semi-touch: date right corners and sys left corners flatten toward each other */
 	A("#cb-date { border-radius: 18px 6px 6px 18px; } ");
 	A("#cb-sys  { border-radius: 6px 18px 18px 6px; } ");
 
 	A(".cb-circle { background-color: #505153; color: #E8EAED; border-radius: 18px; "
-	  "  min-width: 36px; min-height: 36px; padding: 0; font-size: 14px; font-weight: 500; } ");
+	  "  min-width: 36px; min-height: 36px; padding: 0; font-size: 14px; font-weight: 600; } ");
 	A(".cb-circle:hover { background-color: #616264; } ");
 	A(".cb-circle-icon { font-size: 16px; } ");
 
@@ -39,9 +56,9 @@ void apply_chromeos_css(AppState *state) {
 	A(".cb-desk-pill { background-color: #505153; color: #E8EAED; border-radius: 18px; "
 	  "  padding: 0 4px; min-height: 36px; } ");
 	A(".cb-desk-name { background-color: #616264; color: #E8EAED; border-radius: 14px; "
-	  "  font-size: 13px; font-weight: 500; padding: 0 10px; min-height: 28px; } ");
-	A(".cb-desk-arrow { background: transparent; color: #E8EAED; border-radius: 6px; "
-	  "  min-width: 14px; min-height: 20px; padding: 0; font-size: 11px; "
+	  "  font-size: 13px; font-weight: 600; padding: 0 10px; min-height: 28px; } ");
+	A(".cb-desk-arrow { background: transparent; color: #E8EAED; border-radius: 8px; "
+	  "  min-width: 15px; min-height: 20px; margin: 0 0px; padding: 0; font-size: 11px; "
 	  "  border: none; box-shadow: none; font-family: \"JetBrainsMonoNerdFont\"; } ");
 	A(".cb-desk-arrow:hover { background-color: rgba(255,255,255,0.12); } ");
 	/* Add a specific background and corner radius rule for each monitor */
@@ -128,11 +145,15 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 
 	GtkWidget *btn_prev = gtk_button_new_with_label("");
 	gtk_button_set_relief(GTK_BUTTON(btn_prev), GTK_RELIEF_NONE);
+	gtk_widget_set_valign(btn_prev, GTK_ALIGN_CENTER);
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_prev), "cb-desk-arrow");
+	g_signal_connect(btn_prev, "clicked", G_CALLBACK(on_desk_prev), NULL);
 
 	GtkWidget *btn_next = gtk_button_new_with_label("");
 	gtk_button_set_relief(GTK_BUTTON(btn_next), GTK_RELIEF_NONE);
+	gtk_widget_set_valign(btn_next, GTK_ALIGN_CENTER);
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_next), "cb-desk-arrow");
+	g_signal_connect(btn_next, "clicked", G_CALLBACK(on_desk_next), NULL);
 
 	gtk_box_pack_start(GTK_BOX(desk_pill), desk_name_lbl, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(desk_pill), btn_prev, FALSE, FALSE, 0);

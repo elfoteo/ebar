@@ -34,11 +34,12 @@ sudo pacman -S gtk3 gtk-layer-shell
 ```
 
 ### Fonts (runtime)
-- **JetBrains Mono Nerd Font** (or any Nerd Font set in configuration)
+- **Noto Sans** (recommended for ChromeOS mode)
+- **JetBrains Mono Nerd Font** (required for iconography)
 
 On Arch Linux:
 ```bash
-sudo pacman -S ttf-jetbrains-mono-nerd
+sudo pacman -S noto-fonts ttf-jetbrains-mono-nerd
 ```
 
 ### CLI tools (runtime)

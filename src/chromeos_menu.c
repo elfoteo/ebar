@@ -1,8 +1,8 @@
 #include "chromeos_menu.h"
 #include "gtk-layer-shell.h"
+#include <gdk/gdkkeysyms.h>
 #include <stdio.h>
 #include <time.h>
-#include <gdk/gdkkeysyms.h>
 
 /* Global timestamp to handle focus-out vs click race conditions */
 static long long last_destroy_time = 0;
@@ -31,25 +31,19 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer dat
 	return FALSE;
 }
 
-static gboolean on_window_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
-	(void)widget;
-	(void)data;
-	cairo_set_source_rgba(cr, 0, 0, 0, 0);
-	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-	cairo_paint(cr);
-	return FALSE; /* let children draw normally */
-}
-
 void apply_menu_css(void) {
 	/* NUCLEAR: No more 'loaded' guard. Load and apply freshly every time. */
-	const char *css = "window#menu-window { "
+	const char *css = ".ebar-menu-window { "
 					  "  background-color: transparent; "
+					  "  background: none; "
+					  "  box-shadow: none; "
+					  "  border: none; "
+					  "  outline: none; "
 					  "} "
 					  "#menu-bg { "
 					  "  background-color: #2b2b2b; "
 					  "  border-radius: 24px; "
 					  "  border: 1px solid rgba(255,255,255,0.1); "
-					  "  box-shadow: 0 4px 12px rgba(0,0,0,0.5); "
 					  "} "
 					  ".cb-menu { "
 					  "  padding: 16px; "
@@ -210,20 +204,20 @@ static GtkWidget *create_menu_slider(const char *icon, const char *right_icon) {
 	gtk_style_context_add_class(gtk_widget_get_style_context(box), "cb-menu-slider-box");
 
 	GtkWidget *overlay = gtk_overlay_new();
-	
+
 	GtkWidget *scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 100, 1);
 	gtk_scale_set_draw_value(GTK_SCALE(scale), FALSE);
 	gtk_range_set_value(GTK_RANGE(scale), 80);
 	gtk_style_context_add_class(gtk_widget_get_style_context(scale), "cb-menu-slider");
-	
+
 	GtkWidget *icon_lbl = gtk_label_new(icon);
 	gtk_style_context_add_class(gtk_widget_get_style_context(icon_lbl), "cb-menu-slider-icon");
 	gtk_widget_set_halign(icon_lbl, GTK_ALIGN_START);
 	gtk_widget_set_valign(icon_lbl, GTK_ALIGN_CENTER);
-	
+
 	gtk_container_add(GTK_CONTAINER(overlay), scale);
 	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), icon_lbl);
-	
+
 	gtk_box_pack_start(GTK_BOX(box), overlay, TRUE, TRUE, 0);
 
 	if (right_icon) {
@@ -245,7 +239,8 @@ static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
 	apply_menu_css();
 
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-	gtk_widget_set_name(win, "menu-window");
+	gtk_widget_set_name(win, "ebar-menu-window");
+	gtk_style_context_add_class(gtk_widget_get_style_context(win), "ebar-menu-window");
 
 	GdkScreen *screen = gdk_screen_get_default();
 	GdkVisual *visual = gdk_screen_get_rgba_visual(screen);
@@ -253,29 +248,41 @@ static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
 		gtk_widget_set_visual(win, visual);
 
 	gtk_widget_set_app_paintable(win, TRUE);
-	g_signal_connect(win, "draw", G_CALLBACK(on_window_draw), NULL);
 	g_signal_connect(win, "focus-out-event", G_CALLBACK(on_focus_out), NULL);
 	g_signal_connect(win, "key-press-event", G_CALLBACK(on_key_press), NULL);
 
 	gtk_layer_init_for_window(GTK_WINDOW(win));
 	gtk_layer_set_monitor(GTK_WINDOW(win), bw->monitor);
 	gtk_layer_set_namespace(GTK_WINDOW(win), "ebar-menu");
-	
+
+	/* Explicitly set all anchors to prevent the window from stretching to fullscreen */
+	gtk_layer_set_anchor(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_TOP, FALSE);
+	gtk_layer_set_anchor(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_LEFT, FALSE);
 	gtk_layer_set_anchor(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
 	gtk_layer_set_anchor(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_RIGHT, TRUE);
-	
-	gtk_layer_set_margin(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_BOTTOM, 58);
-	gtk_layer_set_margin(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_RIGHT, 10);
-	
-	gtk_layer_set_layer(GTK_WINDOW(win), GTK_LAYER_SHELL_LAYER_OVERLAY);
-	gtk_layer_set_keyboard_interactivity(GTK_WINDOW(win), TRUE);
 
-	GtkWidget *bg = gtk_event_box_new();
+	gtk_layer_set_margin(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_BOTTOM, 52);
+	gtk_layer_set_margin(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_RIGHT, 10);
+
+	gtk_layer_set_layer(GTK_WINDOW(win), GTK_LAYER_SHELL_LAYER_TOP);
+	/* Use ON_DEMAND to allow Esc key to work without grabbing all input */
+	gtk_layer_set_keyboard_mode(GTK_WINDOW(win), GTK_LAYER_SHELL_KEYBOARD_MODE_ON_DEMAND);
+	gtk_layer_set_exclusive_zone(GTK_WINDOW(win), -1);
+
+	gtk_window_set_decorated(GTK_WINDOW(win), FALSE);
+	gtk_window_set_resizable(GTK_WINDOW(win), FALSE);
+
+	GtkWidget *bg = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 	gtk_widget_set_name(bg, "menu-bg");
+	/* Ensure the background is centered/aligned to avoid blocking if the window is slightly larger */
+	gtk_widget_set_halign(bg, GTK_ALIGN_END);
+	gtk_widget_set_valign(bg, GTK_ALIGN_END);
 
 	GtkWidget *main_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 	gtk_style_context_add_class(gtk_widget_get_style_context(main_box), "cb-menu");
 	gtk_widget_set_size_request(main_box, 420, -1);
+	gtk_widget_set_halign(main_box, GTK_ALIGN_END);
+	gtk_widget_set_valign(main_box, GTK_ALIGN_END);
 
 	GtkWidget *grid = gtk_grid_new();
 	gtk_style_context_add_class(gtk_widget_get_style_context(grid), "cb-menu-grid");
@@ -296,7 +303,7 @@ static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
 	gtk_grid_attach(GTK_GRID(grid), keyboard, 2, 1, 2, 1);
 
 	gtk_box_pack_start(GTK_BOX(main_box), grid, FALSE, FALSE, 0);
-	
+
 	gtk_box_pack_start(GTK_BOX(main_box), create_menu_slider("󰕾", "󰝟"), FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(main_box), create_menu_slider("󰖔", "󰽢"), FALSE, FALSE, 0);
 
@@ -331,7 +338,7 @@ static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
 
 void toggle_chromeos_menu(BarWindow *bw, AppState *state) {
 	long long now = get_time_ms();
-	
+
 	if (bw->menu_window) {
 		last_destroy_time = get_time_ms();
 		gtk_widget_destroy(bw->menu_window);
@@ -345,27 +352,47 @@ void toggle_chromeos_menu(BarWindow *bw, AppState *state) {
 
 	bw->menu_window = create_chromeos_menu(bw, state);
 	g_signal_connect(bw->menu_window, "destroy", G_CALLBACK(gtk_widget_destroyed), &bw->menu_window);
-	
+
 	gtk_widget_show_all(bw->menu_window);
 	gtk_widget_grab_focus(bw->menu_window);
 }
 
+void close_all_chromeos_menus(AppState *state) {
+	pthread_mutex_lock(&state->mutex);
+	for (GList *l = state->bar_windows; l != NULL; l = l->next) {
+		BarWindow *bw = (BarWindow *)l->data;
+		if (bw->menu_window) {
+			last_destroy_time = get_time_ms();
+			gtk_widget_destroy(bw->menu_window);
+			bw->menu_window = NULL;
+		}
+	}
+	pthread_mutex_unlock(&state->mutex);
+}
+
 static void on_sys_btn_clicked(GtkWidget *widget, gpointer data) {
 	(void)widget;
-	struct { BarWindow *bw; AppState *state; } *ctx = data;
+	struct {
+		BarWindow *bw;
+		AppState *state;
+	} *ctx = data;
 	toggle_chromeos_menu(ctx->bw, ctx->state);
 }
 
 void setup_chromeos_menu_toggle(BarWindow *bw, AppState *state) {
-	if (!bw->cb_sys_label) return;
-	
+	if (!bw->cb_sys_label)
+		return;
+
 	GtkWidget *btn = gtk_widget_get_parent(bw->cb_sys_label);
 	if (GTK_IS_BUTTON(btn)) {
-		typedef struct { BarWindow *bw; AppState *state; } CallbackCtx;
+		typedef struct {
+			BarWindow *bw;
+			AppState *state;
+		} CallbackCtx;
 		CallbackCtx *ctx = g_new0(CallbackCtx, 1);
 		ctx->bw = bw;
 		ctx->state = state;
-		
+
 		g_signal_connect(btn, "clicked", G_CALLBACK(on_sys_btn_clicked), ctx);
 	}
 }

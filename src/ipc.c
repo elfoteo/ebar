@@ -1,5 +1,6 @@
 #include "ipc.h"
 #include "bar.h"
+#include "chromeos_menu.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -290,12 +291,18 @@ void sync_initial_state(AppState *w) {
 }
 
 /* ── IPC event dispatcher ──────────────────────────────────────────────────── */
+static gboolean close_menus_idle(gpointer data) {
+    close_all_chromeos_menus((AppState *)data);
+    return G_SOURCE_REMOVE;
+}
+
 static void handle_ipc_line(AppState *w, char *line) {
     if (strncmp(line, "workspace>>", 11) == 0) {
         pthread_mutex_lock(&w->mutex);
         w->active_workspace = atoi(line + 11);
         pthread_mutex_unlock(&w->mutex);
         g_idle_add(update_ws_idle, w);
+        g_idle_add(close_menus_idle, w);
     } else if (strncmp(line, "activewindowv2>>", 16) == 0) {
         char *p = line + 16;
         char *comma = strchr(p, ',');
@@ -306,6 +313,7 @@ static void handle_ipc_line(AppState *w, char *line) {
         pthread_mutex_unlock(&w->mutex);
         g_free(addr);
         g_idle_add(update_ws_idle, w);
+        g_idle_add(close_menus_idle, w);
     } else if (strncmp(line, "openwindow>>", 12) == 0) {
         char *p = line + 12;
         char *comma = strchr(p, ',');
@@ -317,6 +325,7 @@ static void handle_ipc_line(AppState *w, char *line) {
         if (ws_id >= 1 && ws_id <= MAX_WORKSPACES) w->ws_win_count[ws_id]++;
         pthread_mutex_unlock(&w->mutex);
         g_idle_add(update_ws_idle, w);
+        g_idle_add(close_menus_idle, w);
     } else if (strncmp(line, "closewindow>>", 13) == 0) {
         char *addr = line + 13;
         pthread_mutex_lock(&w->mutex);
@@ -328,6 +337,7 @@ static void handle_ipc_line(AppState *w, char *line) {
         }
         pthread_mutex_unlock(&w->mutex);
         g_idle_add(update_ws_idle, w);
+        g_idle_add(close_menus_idle, w);
     } else if (strncmp(line, "movewindow>>", 12) == 0) {
         char *p = line + 12;
         char *comma = strchr(p, ',');
@@ -345,6 +355,7 @@ static void handle_ipc_line(AppState *w, char *line) {
         g_free(addr);
         pthread_mutex_unlock(&w->mutex);
         g_idle_add(update_ws_idle, w);
+        g_idle_add(close_menus_idle, w);
     } else if (strncmp(line, "activelayout>>", 14) == 0) {
         /* activelayout>>keyboard_name,Layout Display Name */
         g_idle_add(layout_idle, w);
@@ -355,6 +366,7 @@ static void handle_ipc_line(AppState *w, char *line) {
         w->has_fullscreen = fs;
         pthread_mutex_unlock(&w->mutex);
         g_idle_add(fullscreen_css_idle, w);
+        g_idle_add(close_menus_idle, w);
     }
 }
 

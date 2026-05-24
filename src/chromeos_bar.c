@@ -97,6 +97,19 @@ void apply_chromeos_css(AppState *state) {
 	}
 }
 
+static void on_bar_window_destroy(GtkWidget *widget, gpointer data) {
+	(void)widget;
+	struct { BarWindow *bw; AppState *state; } *ctx = data;
+	pthread_mutex_lock(&ctx->state->mutex);
+	ctx->state->bar_windows = g_list_remove(ctx->state->bar_windows, ctx->bw);
+	pthread_mutex_unlock(&ctx->state->mutex);
+	if (ctx->bw->menu_window) {
+		gtk_widget_destroy(ctx->bw->menu_window);
+	}
+	g_free(ctx->bw);
+	g_free(ctx);
+}
+
 /* ── ChromeOS bar window ──────────────────────────────────────────────────── */
 void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -208,6 +221,13 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 	gtk_container_add(GTK_CONTAINER(win), cb_box);
 
 	state->bar_windows = g_list_append(state->bar_windows, bw);
+
+	typedef struct { BarWindow *bw; AppState *state; } BarDestroyCtx;
+	BarDestroyCtx *dctx = g_new0(BarDestroyCtx, 1);
+	dctx->bw = bw;
+	dctx->state = state;
+	g_signal_connect(win, "destroy", G_CALLBACK(on_bar_window_destroy), dctx);
+
 	apply_chromeos_css(state);
 	setup_chromeos_menu_toggle(bw, state);
 	gtk_widget_show_all(win);

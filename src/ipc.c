@@ -7,22 +7,32 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 extern void update_workspace_display(AppState *w);
 extern gboolean update_widgets_idle(gpointer data);
 
+static char *hyprctl_request(const char *cmd);
+int check_fullscreen_on_monitor_with_data(int x, int y, const char *monitors, const char *clients);
+
 static gboolean fullscreen_css_idle(gpointer data) {
     AppState *w = (AppState *)data;
+    char *monitors = hyprctl_request("j/monitors");
+    char *clients = hyprctl_request("j/clients");
+
     pthread_mutex_lock(&w->mutex);
     for (GList *l = w->bar_windows; l != NULL; l = l->next) {
         BarWindow *bw = (BarWindow *)l->data;
         if (bw->monitor) {
             GdkRectangle geom;
             gdk_monitor_get_geometry(bw->monitor, &geom);
-            bw->has_fullscreen = check_fullscreen_on_monitor(geom.x, geom.y);
+            bw->has_fullscreen = check_fullscreen_on_monitor_with_data(geom.x, geom.y, monitors, clients);
         }
     }
     pthread_mutex_unlock(&w->mutex);
+
+    free(monitors);
+    free(clients);
 
     apply_global_css(w);
     return G_SOURCE_REMOVE;
@@ -74,20 +84,18 @@ static int get_json_int_from(const char *obj, const char *key, const char *end_o
     return atoi(p);
 }
 
-int check_fullscreen_on_monitor(int x, int y) {
-    FILE *log = fopen("/tmp/ebar_debug.log", "a");
-    if (log) {
-        fprintf(log, "\n--- check_fullscreen_on_monitor(x=%d, y=%d) ---\n", x, y);
-    }
+static int get_json_bool_from(const char *obj, const char *key, const char *end_obj) {
+    const char *p = strstr(obj, key);
+    if (!p || (end_obj && p >= end_obj)) return -1;
+    p += strlen(key);
+    while (*p == ' ' || *p == ':' || *p == '\t' || *p == '{' || *p == '"') p++;
+    if (strncmp(p, "true", 4) == 0) return 1;
+    if (strncmp(p, "false", 5) == 0) return 0;
+    return -1;
+}
 
-    char *monitors = hyprctl_request("j/monitors");
-    if (!monitors) {
-        if (log) {
-            fprintf(log, "FAILED to get monitors!\n");
-            fclose(log);
-        }
-        return 0;
-    }
+int check_fullscreen_on_monitor_with_data(int x, int y, const char *monitors, const char *clients) {
+    if (!monitors || !clients) return 0;
 
     int active_ws = -1;
     const char *p = monitors;
@@ -95,42 +103,20 @@ int check_fullscreen_on_monitor(int x, int y) {
         const char *next_mon = strstr(p + 7, "\"name\":");
         int mx = get_json_int_from(p, "\"x\"", next_mon);
         int my = get_json_int_from(p, "\"y\"", next_mon);
-        if (log) {
-            fprintf(log, "Parsed monitor: mx=%d, my=%d\n", mx, my);
-        }
         if (mx == x && my == y) {
             const char *aw = strstr(p, "\"activeWorkspace\"");
             if (aw && (!next_mon || aw < next_mon)) {
                 active_ws = get_json_int_from(aw, "\"id\"", next_mon);
             }
-            if (log) {
-                fprintf(log, "MATCHED monitor! activeWorkspace ID = %d\n", active_ws);
-            }
             break;
         }
         p += 7;
     }
-    free(monitors);
 
-    if (active_ws == -1) {
-        if (log) {
-            fprintf(log, "active_ws == -1, returning 0\n");
-            fclose(log);
-        }
-        return 0;
-    }
-
-    char *clients = hyprctl_request("j/clients");
-    if (!clients) {
-        if (log) {
-            fprintf(log, "FAILED to get clients!\n");
-            fclose(log);
-        }
-        return 0;
-    }
+    if (active_ws == -1) return 0;
 
     int has_fs = 0;
-    int client_count = 0;
+    int tiled_count = 0;
     p = clients;
     while ((p = strstr(p, "\"address\":"))) {
         const char *next_client = strstr(p + 10, "\"address\":");
@@ -138,28 +124,25 @@ int check_fullscreen_on_monitor(int x, int y) {
         if (ws && (!next_client || ws < next_client)) {
             int ws_id = get_json_int_from(ws, "\"id\"", next_client);
             if (ws_id == active_ws) {
-                client_count++;
                 int fs = get_json_int_from(p, "\"fullscreen\"", next_client);
-                if (log) {
-                    fprintf(log, "Client on ws %d: fullscreen status = %d\n", ws_id, fs);
-                }
-                if (fs > 0) {
-                    has_fs = 1;
-                }
+                int fl = get_json_bool_from(p, "\"floating\"", next_client);
+                if (fs > 0) has_fs = 1;
+                if (fl != 1) tiled_count++;
             }
         }
         p += 10;
     }
+
+    return (has_fs || tiled_count == 1);
+}
+
+int check_fullscreen_on_monitor(int x, int y) {
+    char *monitors = hyprctl_request("j/monitors");
+    char *clients = hyprctl_request("j/clients");
+    int res = check_fullscreen_on_monitor_with_data(x, y, monitors, clients);
+    free(monitors);
     free(clients);
-
-    int should_flatten = (has_fs || client_count == 1);
-
-    if (log) {
-        fprintf(log, "Workspace %d: client_count = %d, has_fs = %d, should_flatten = %d\n",
-                active_ws, client_count, has_fs, should_flatten);
-        fclose(log);
-    }
-    return should_flatten;
+    return res;
 }
 
 /* ── keyboard layout helpers ───────────────────────────────────────────────── */
@@ -402,4 +385,28 @@ void *ipc_thread_func(void *data) {
         close(fd);
         sleep(1);
     }
+}
+
+void *extra_events_thread_func(void *data) {
+    AppState *w = (AppState *)data;
+    const char *fifo_path = "/tmp/hypr-events-extras";
+
+    while (1) {
+        int fd = open(fifo_path, O_RDONLY);
+        if (fd < 0) {
+            sleep(1);
+            continue;
+        }
+
+        char buffer[1024];
+        ssize_t n;
+        while ((n = read(fd, buffer, sizeof(buffer) - 1)) > 0) {
+            buffer[n] = '\0';
+            if (strstr(buffer, "togglefloating")) {
+                g_idle_add(update_ws_idle, w);
+            }
+        }
+        close(fd);
+    }
+    return NULL;
 }

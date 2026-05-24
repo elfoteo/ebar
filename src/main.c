@@ -16,7 +16,7 @@ int main(int argc, char **argv) {
 
     config_load(&state->config);
     if (state->config.mode == MODE_CHROMEOS) {
-        strcpy(state->config.font.family, "Google Sans");
+        strcpy(state->config.font.family, "Google Sans Flex");
     }
     sync_initial_state(state);
     apply_global_css(state);
@@ -31,10 +31,11 @@ int main(int argc, char **argv) {
     update_widgets_idle(state);
     g_timeout_add(1000, timer_update_widgets, state);
 
-    pthread_t ipc_thread, metrics_thread, media_thread;
+    pthread_t ipc_thread, metrics_thread, media_thread, extra_thread;
     pthread_create(&ipc_thread, NULL, ipc_thread_func, state);
     pthread_create(&metrics_thread, NULL, metrics_thread_func, state);
     pthread_create(&media_thread, NULL, media_thread_func, state);
+    pthread_create(&extra_thread, NULL, extra_events_thread_func, state);
 
     gtk_main();
 

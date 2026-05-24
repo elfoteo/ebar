@@ -84,6 +84,21 @@ layerrule = blur on, ignore_alpha 0.01, match:namespace ebar
 ```
 *Note: Make sure your `namespace` in the bar is set to `ebar` (default).*
 
+### Custom Event Integration
+ebar supports listening to a custom event pipe at `/tmp/hypr-events-extras`. This can be used to trigger immediate bar refreshes for events that Hyprland doesn't broadcast over its standard IPC socket.
+
+A common use case is updating the bar's **fullscreen mode** (where it becomes square to fill the gap) when toggling floating windows. By default, ebar enters fullscreen mode if there is exactly one tiled window on the workspace (ignoring all floating windows).
+
+To use this, create the pipe and echo events to it:
+```bash
+# Example script to toggle floating and notify ebar
+FIFO="/tmp/hypr-events-extras"
+if [ ! -p "$FIFO" ]; then mkfifo "$FIFO"; fi
+
+hyprctl dispatch togglefloating
+echo togglefloating > "$FIFO"
+```
+
 ### Example Layout
 ```ini
 [bar]

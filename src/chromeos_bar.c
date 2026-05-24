@@ -1,4 +1,5 @@
 #include "chromeos_bar.h"
+#include "chromeos_menu.h"
 #include "gtk-layer-shell.h"
 #include "ipc.h"
 #include "widgets.h"
@@ -208,5 +209,6 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 
 	state->bar_windows = g_list_append(state->bar_windows, bw);
 	apply_chromeos_css(state);
+	setup_chromeos_menu_toggle(bw, state);
 	gtk_widget_show_all(win);
 }

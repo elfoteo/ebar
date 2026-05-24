@@ -153,6 +153,7 @@ typedef struct {
     GtkWidget *cb_sys_label;
     GtkWidget *cb_layout_label;
     GtkWidget *cb_box;
+    GtkWidget *menu_window;
 
 } BarWindow;
 

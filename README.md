@@ -26,11 +26,13 @@ A beautiful, modular, and customizable Hyprland bar written in C with GTK3 and L
 ### Libraries (build-time)
 - `gtk3`
 - `gtk-layer-shell`
+- `upower-glib`
+- `librsvg`
 - `pthread`, `math`, `cairo`
 
 On Arch Linux:
 ```bash
-sudo pacman -S gtk3 gtk-layer-shell
+sudo pacman -S gtk3 gtk-layer-shell upower librsvg
 ```
 
 ### Fonts (runtime)

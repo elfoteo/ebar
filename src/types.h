@@ -123,6 +123,9 @@ typedef struct {
     int  nightlight_last_level; /* remembered level for toggle */
     int  nightlight_error;  /* 1 = last IPC call failed  */
     char kb_layout[32];     /* active keyboard layout code, e.g. "US" */
+    int  bat_percent;
+    int  bat_charging;
+    char bat_time_remaining[64];
 } SystemData;
 
 typedef struct {
@@ -154,6 +157,8 @@ typedef struct {
     GtkWidget *cb_layout_label;
     GtkWidget *cb_box;
     GtkWidget *menu_window;
+    GtkWidget *cb_menu_kb_label;
+    GtkWidget *cb_menu_bat_label;
 
 } BarWindow;
 

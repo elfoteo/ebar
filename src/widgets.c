@@ -780,6 +780,18 @@ gboolean update_widgets_idle(gpointer data) {
 		}
 		if (bw->cb_layout_label && d.kb_layout[0])
 			gtk_label_set_text(GTK_LABEL(bw->cb_layout_label), d.kb_layout);
+		if (bw->cb_menu_kb_label && d.kb_layout[0])
+			gtk_label_set_text(GTK_LABEL(bw->cb_menu_kb_label), d.kb_layout);
+
+		if (bw->cb_menu_bat_label) {
+			char bat_buf[128];
+			if (d.bat_percent >= 0) {
+				snprintf(bat_buf, sizeof(bat_buf), "%d%% - %s", d.bat_percent, d.bat_time_remaining[0] ? d.bat_time_remaining : (d.bat_charging ? "Charging" : "Discharging"));
+			} else {
+				snprintf(bat_buf, sizeof(bat_buf), "Battery: N/A");
+			}
+			gtk_label_set_text(GTK_LABEL(bw->cb_menu_bat_label), bat_buf);
+		}
 
 		for (int i = 0; i < 6; i++)
 			update_metric_widget(bw->metrics_widgets[i], (MetricType)i, &d, w->config.metrics.use_bars);

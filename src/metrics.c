@@ -173,6 +173,49 @@ static void fetch_volume(AppState *w) {
     pthread_mutex_unlock(&w->mutex);
 }
 
+static void fetch_battery(AppState *w) {
+    int percent = -1;
+    int charging = 0;
+    char time_rem[64] = "Unknown";
+
+    FILE *fp = popen("upower -i $(upower -e | grep battery | head -n 1) 2>/dev/null", "r");
+    if (fp) {
+        char buf[256];
+        while (fgets(buf, sizeof(buf), fp)) {
+            if (strstr(buf, "percentage:")) {
+                char *p = strstr(buf, ":");
+                if (p) percent = atoi(p + 1);
+            } else if (strstr(buf, "state:")) {
+                if (strstr(buf, "charging") || strstr(buf, "fully-charged"))
+                    charging = 1;
+            } else if (strstr(buf, "time to empty:")) {
+                char *p = strstr(buf, ":");
+                if (p) {
+                    while (*p == ' ' || *p == ':') p++;
+                    char *end = p + strlen(p) - 1;
+                    while (end > p && (*end == '\n' || *end == '\r' || *end == ' ')) *end-- = '\0';
+                    strncpy(time_rem, p, sizeof(time_rem) - 1);
+                }
+            } else if (strstr(buf, "time to full:")) {
+                char *p = strstr(buf, ":");
+                if (p) {
+                    while (*p == ' ' || *p == ':') p++;
+                    char *end = p + strlen(p) - 1;
+                    while (end > p && (*end == '\n' || *end == '\r' || *end == ' ')) *end-- = '\0';
+                    snprintf(time_rem, sizeof(time_rem), "Charging: %s", p);
+                }
+            }
+        }
+        pclose(fp);
+    }
+
+    pthread_mutex_lock(&w->mutex);
+    w->sys_data.bat_percent = percent;
+    w->sys_data.bat_charging = charging;
+    strncpy(w->sys_data.bat_time_remaining, time_rem, sizeof(w->sys_data.bat_time_remaining) - 1);
+    pthread_mutex_unlock(&w->mutex);
+}
+
 extern gboolean update_widgets_idle(gpointer data);
 
 void *metrics_thread_func(void *data) {
@@ -180,6 +223,7 @@ void *metrics_thread_func(void *data) {
     while (1) {
         fetch_system_metrics(w);
         fetch_volume(w);
+        fetch_battery(w);
         g_idle_add(update_widgets_idle, w);
         sleep(1);
     }

@@ -1,9 +1,9 @@
 #include "chromeos_menu.h"
 #include "gtk-layer-shell.h"
 #include "ipc.h"
+#include "widgets.h"
 #include <gdk/gdkkeysyms.h>
 #include <librsvg/rsvg.h>
-#include <libupower-glib/upower.h>
 #include <stdio.h>
 #include <time.h>
 
@@ -165,14 +165,20 @@ void apply_menu_css(void) {
 					  "  margin-left: 24px; "
 					  "} "
 					  ".cb-menu-slider trough { "
-					  "  background-color: #3c3c3c; "
+					  "  background-color: transparent; "
+					  "  background-image: linear-gradient(#3c3c3c, #3c3c3c); "
+					  "  background-size: 100% 4px; "
+					  "  background-repeat: no-repeat; "
+					  "  background-position: center; "
 					  "  border-radius: 18px; "
 					  "  min-height: 36px; "
 					  "} "
-					  ".cb-menu-slider trough highlight { "
+					  ".cb-menu-slider highlight { "
 					  "  background-color: #cbbef9; "
 					  "  border-radius: 18px; "
+					  "  min-height: 36px; "
 					  "} "
+
 					  ".cb-menu-slider slider { "
 					  "  all: unset; "
 					  "} "
@@ -283,7 +289,54 @@ static GtkWidget *create_menu_pill(const char *icon, const char *title, const ch
 	return btn;
 }
 
-static GtkWidget *create_menu_slider(const char *icon, const char *right_icon) {
+static void on_vol_scale_changed(GtkRange *range, gpointer data) {
+	(void)data;
+	double val = gtk_range_get_value(range);
+	char cmd[64];
+	snprintf(cmd, sizeof(cmd), "pactl set-sink-volume @DEFAULT_SINK@ %.0f%%", val);
+	system(cmd);
+}
+
+static void on_mute_clicked(GtkWidget *widget, gpointer data) {
+	(void)widget;
+	(void)data;
+	system("pactl set-sink-mute @DEFAULT_SINK@ toggle");
+}
+
+static void on_bright_scale_changed(GtkRange *range, gpointer data) {
+	(void)data;
+	double val = gtk_range_get_value(range);
+	char cmd[64];
+	snprintf(cmd, sizeof(cmd), "brightnessctl set %.0f%%", val);
+	system(cmd);
+}
+
+static int get_current_brightness(void) {
+	FILE *fp = popen("brightnessctl -m", "r");
+	if (fp) {
+		char buf[256];
+		if (fgets(buf, sizeof(buf), fp)) {
+			// Format: device,type,current,percentage,max
+			char *p = strchr(buf, ','); // skip device
+			if (p) p = strchr(p + 1, ','); // skip type
+			if (p) p = strchr(p + 1, ','); // skip current
+			if (p) {
+				p++;
+				char *end = strchr(p, '%');
+				if (end) {
+					*end = '\0';
+					int b = atoi(p);
+					pclose(fp);
+					return b;
+				}
+			}
+		}
+		pclose(fp);
+	}
+	return 50;
+}
+
+static GtkWidget *create_menu_slider(const char *icon, const char *right_icon, double initial_val, GCallback on_changed, GCallback on_right_clicked) {
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 	gtk_style_context_add_class(gtk_widget_get_style_context(box), "cb-menu-slider-box");
 
@@ -291,8 +344,10 @@ static GtkWidget *create_menu_slider(const char *icon, const char *right_icon) {
 
 	GtkWidget *scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 100, 1);
 	gtk_scale_set_draw_value(GTK_SCALE(scale), FALSE);
-	gtk_range_set_value(GTK_RANGE(scale), 80);
+	gtk_range_set_value(GTK_RANGE(scale), initial_val);
 	gtk_style_context_add_class(gtk_widget_get_style_context(scale), "cb-menu-slider");
+	if (on_changed)
+		g_signal_connect(scale, "value-changed", on_changed, NULL);
 
 	GtkWidget *icon_lbl = gtk_label_new(icon);
 	gtk_style_context_add_class(gtk_widget_get_style_context(icon_lbl), "cb-menu-slider-icon");
@@ -308,6 +363,8 @@ static GtkWidget *create_menu_slider(const char *icon, const char *right_icon) {
 		GtkWidget *right_btn = gtk_button_new_with_label(right_icon);
 		gtk_widget_set_valign(right_btn, GTK_ALIGN_CENTER);
 		gtk_style_context_add_class(gtk_widget_get_style_context(right_btn), "cb-menu-slider-btn");
+		if (on_right_clicked)
+			g_signal_connect(right_btn, "clicked", on_right_clicked, NULL);
 		gtk_box_pack_start(GTK_BOX(box), right_btn, FALSE, FALSE, 0);
 	}
 
@@ -336,70 +393,26 @@ static GdkPixbuf *create_pixbuf_from_svg(const char *svg_data, int size) {
 	return NULL;
 }
 
-static char *get_battery_info(void) {
-	UpClient *client = up_client_new();
-	if (!client)
+static char *get_battery_info_str(SystemData *d) {
+	if (d->bat_percent < 0)
 		return g_strdup("Battery: N/A");
 
-	GPtrArray *devices = up_client_get_devices2(client);
-	if (!devices) {
-		g_object_unref(client);
-		return g_strdup("Battery: N/A");
-	}
+	if (d->bat_time_remaining[0])
+		return g_strdup_printf("%d%% - %s", d->bat_percent, d->bat_time_remaining);
 
-	char *info = NULL;
-	for (guint i = 0; i < devices->len; i++) {
-		UpDevice *device = g_ptr_array_index(devices, i);
-		UpDeviceKind kind;
-		g_object_get(device, "kind", &kind, NULL);
+	if (d->bat_charging)
+		return g_strdup_printf("%d%% - Charging", d->bat_percent);
 
-		if (kind == UP_DEVICE_KIND_BATTERY) {
-			double percentage;
-			gint64 time_to_empty, time_to_full;
-			UpDeviceState state;
-
-			g_object_get(device, "percentage", &percentage, "state", &state, "time-to-empty", &time_to_empty, "time-to-full", &time_to_full,
-						 NULL);
-
-			int hours = 0, mins = 0;
-			const char *status_str = "";
-
-			if (state == UP_DEVICE_STATE_CHARGING) {
-				hours = (int)(time_to_full / 3600);
-				mins = (int)((time_to_full % 3600) / 60);
-				status_str = "Time to full: ";
-			} else if (state == UP_DEVICE_STATE_DISCHARGING) {
-				hours = (int)(time_to_empty / 3600);
-				mins = (int)((time_to_empty % 3600) / 60);
-				status_str = "Remaining: ";
-			} else if (state == UP_DEVICE_STATE_FULLY_CHARGED) {
-				info = g_strdup_printf("%.0f%% - Charged", percentage);
-				break;
-			}
-
-			if (hours > 0 || mins > 0) {
-				info = g_strdup_printf("%.0f%% - %s%d:%02d", percentage, status_str, hours, mins);
-			} else {
-				info = g_strdup_printf("%.0f%%", percentage);
-			}
-			break;
-		}
-	}
-
-	g_ptr_array_unref(devices);
-	g_object_unref(client);
-
-	if (!info)
-		return g_strdup("Battery: N/A");
-	return info;
+	return g_strdup_printf("%d%%", d->bat_percent);
 }
 
 static void on_keyboard_clicked(GtkWidget *widget, gpointer data) {
 	(void)widget;
-	(void)data;
+	AppState *state = (AppState *)data;
 	char *res = hyprctl_request("switchxkblayout all next");
 	if (res)
 		free(res);
+	g_timeout_add(100, update_widgets_idle, state);
 }
 
 static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
@@ -467,15 +480,15 @@ static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
 	GtkWidget *bluetooth = create_menu_pill("󰂯", "Bluetooth", "On", TRUE, NULL);
 	gtk_grid_attach(GTK_GRID(grid), bluetooth, 0, 1, 2, 1);
 
-	GtkWidget *keyboard =
-		create_menu_pill("󰌌", "Keyboard", state->sys_data.kb_layout[0] ? state->sys_data.kb_layout : "US", FALSE, &bw->cb_menu_kb_label);
-	g_signal_connect(keyboard, "clicked", G_CALLBACK(on_keyboard_clicked), NULL);
+	GtkWidget *keyboard = create_menu_pill("󰌌", "Keyboard", state->sys_data.kb_layout[0] ? state->sys_data.kb_layout : "US", FALSE, &bw->cb_menu_kb_label);
+	g_signal_connect(keyboard, "clicked", G_CALLBACK(on_keyboard_clicked), state);
 	gtk_grid_attach(GTK_GRID(grid), keyboard, 2, 1, 2, 1);
+
 
 	gtk_box_pack_start(GTK_BOX(main_box), grid, FALSE, FALSE, 0);
 
-	gtk_box_pack_start(GTK_BOX(main_box), create_menu_slider("󰕾", "󰝟"), FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(main_box), create_menu_slider("󰃟", ""), FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(main_box), create_menu_slider("󰕾", "󰝟", state->sys_data.vol, G_CALLBACK(on_vol_scale_changed), G_CALLBACK(on_mute_clicked)), FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(main_box), create_menu_slider("󰃟", "", get_current_brightness(), G_CALLBACK(on_bright_scale_changed), NULL), FALSE, FALSE, 0);
 
 	GtkWidget *bottom_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 	gtk_style_context_add_class(gtk_widget_get_style_context(bottom_box), "cb-menu-bottom");
@@ -485,7 +498,7 @@ static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
 	gtk_container_add(GTK_CONTAINER(power_btn), gtk_label_new("󰐥 "));
 	gtk_box_pack_start(GTK_BOX(bottom_box), power_btn, FALSE, FALSE, 0);
 
-	char *bat_info = get_battery_info();
+	char *bat_info = get_battery_info_str(&state->sys_data);
 	GtkWidget *battery_lbl = gtk_label_new(bat_info);
 	g_free(bat_info);
 	bw->cb_menu_bat_label = battery_lbl;

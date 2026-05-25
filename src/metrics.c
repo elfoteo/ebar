@@ -5,6 +5,7 @@
 #include <sys/statvfs.h>
 #include <unistd.h>
 #include <glob.h>
+#include <libupower-glib/upower.h>
 
 static int layout_has_gpu(Config *cfg) {
     for (int r = 0; r < 2; r++)
@@ -174,39 +175,47 @@ static void fetch_volume(AppState *w) {
 }
 
 static void fetch_battery(AppState *w) {
-    int percent = -1;
-    int charging = 0;
-    char time_rem[64] = "Unknown";
+    int percent = -1, charging = 0;
+    char time_rem[64] = "";
 
-    FILE *fp = popen("upower -i $(upower -e | grep battery | head -n 1) 2>/dev/null", "r");
-    if (fp) {
-        char buf[256];
-        while (fgets(buf, sizeof(buf), fp)) {
-            if (strstr(buf, "percentage:")) {
-                char *p = strstr(buf, ":");
-                if (p) percent = atoi(p + 1);
-            } else if (strstr(buf, "state:")) {
-                if (strstr(buf, "charging") || strstr(buf, "fully-charged"))
-                    charging = 1;
-            } else if (strstr(buf, "time to empty:")) {
-                char *p = strstr(buf, ":");
-                if (p) {
-                    while (*p == ' ' || *p == ':') p++;
-                    char *end = p + strlen(p) - 1;
-                    while (end > p && (*end == '\n' || *end == '\r' || *end == ' ')) *end-- = '\0';
-                    strncpy(time_rem, p, sizeof(time_rem) - 1);
-                }
-            } else if (strstr(buf, "time to full:")) {
-                char *p = strstr(buf, ":");
-                if (p) {
-                    while (*p == ' ' || *p == ':') p++;
-                    char *end = p + strlen(p) - 1;
-                    while (end > p && (*end == '\n' || *end == '\r' || *end == ' ')) *end-- = '\0';
-                    snprintf(time_rem, sizeof(time_rem), "Charging: %s", p);
+    UpClient *client = up_client_new();
+    if (client) {
+        GPtrArray *devices = up_client_get_devices2(client);
+        if (devices) {
+            for (guint i = 0; i < devices->len; i++) {
+                UpDevice *device = g_ptr_array_index(devices, i);
+                UpDeviceKind kind;
+                g_object_get(device, "kind", &kind, NULL);
+
+                if (kind == UP_DEVICE_KIND_BATTERY) {
+                    double percentage;
+                    gint64 t_empty, t_full;
+                    UpDeviceState state;
+
+                    g_object_get(device, "percentage", &percentage, "state", &state, 
+                                 "time-to-empty", &t_empty, "time-to-full", &t_full, NULL);
+
+                    percent = (int)percentage;
+                    if (state == UP_DEVICE_STATE_CHARGING) {
+                        charging = 1;
+                        int h = (int)(t_full / 3600);
+                        int m = (int)((t_full % 3600) / 60);
+                        if (h > 0 || m > 0) snprintf(time_rem, sizeof(time_rem), "Time to full: %d:%02d", h, m);
+                        else strncpy(time_rem, "Charging", sizeof(time_rem) - 1);
+                    } else if (state == UP_DEVICE_STATE_DISCHARGING) {
+                        int h = (int)(t_empty / 3600);
+                        int m = (int)((t_empty % 3600) / 60);
+                        if (h > 0 || m > 0) snprintf(time_rem, sizeof(time_rem), "Remaining: %d:%02d", h, m);
+                    } else if (state == UP_DEVICE_STATE_FULLY_CHARGED) {
+                        charging = 1;
+                        strncpy(time_rem, "Charged", sizeof(time_rem) - 1);
+                    }
+                    break;
                 }
             }
+            g_ptr_array_unref(devices);
         }
-        pclose(fp);
+        g_object_unref(client);
     }
 
     pthread_mutex_lock(&w->mutex);

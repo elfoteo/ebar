@@ -46,6 +46,7 @@ sudo pacman -S noto-fonts ttf-jetbrains-mono-nerd
 
 ### CLI tools (runtime)
 - `pactl`: Volume control.
+- `brightnessctl`: Backlight control.
 - `playerctl`: Media metadata and controls.
 - `nvidia-smi`: Optional, for GPU metrics.
 

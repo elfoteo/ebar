@@ -276,8 +276,8 @@ static void on_keyboard_arrow_clicked(GtkWidget *widget, gpointer data) {
 		layout_ctx->state = state;
 		layout_ctx->index = i;
 		layout_ctx->layout = g_strdup(layouts[i]);
-		g_signal_connect_data(btn, "clicked", G_CALLBACK(on_keyboard_layout_clicked), layout_ctx,
-							  (GClosureNotify)free_keyboard_layout_ctx, 0);
+		g_signal_connect_data(btn, "clicked", G_CALLBACK(on_keyboard_layout_clicked), layout_ctx, (GClosureNotify)free_keyboard_layout_ctx,
+							  0);
 
 		gtk_box_pack_start(GTK_BOX(content), btn, FALSE, FALSE, 0);
 		g_free(label);
@@ -446,8 +446,8 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 	GtkWidget *grid = gtk_grid_new();
 	gtk_style_context_add_class(gtk_widget_get_style_context(grid), "cb-menu-grid");
 	gtk_grid_set_column_homogeneous(GTK_GRID(grid), TRUE);
-	gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
-	gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
+	gtk_grid_set_row_spacing(GTK_GRID(grid), 12);
+	gtk_grid_set_column_spacing(GTK_GRID(grid), 12);
 
 	MenuCtx *ctx = g_new0(MenuCtx, 1);
 	ctx->bw = bw;
@@ -479,11 +479,9 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 		}
 	}
 
-	bw->cb_menu_wifi_pill = chromeos_menu_create_pill(w_icon, "WiFi", w_subtitle,
-													  wifi_active, &bw->cb_menu_wifi_subtitle, &bw->cb_menu_wifi_icon,
-													  &bw->cb_menu_wifi_arrow,
-													  G_CALLBACK(chromeos_menu_on_wifi_clicked),
-													  G_CALLBACK(chromeos_menu_on_wifi_arrow_clicked), ctx);
+	bw->cb_menu_wifi_pill = chromeos_menu_create_pill(
+		w_icon, "WiFi", w_subtitle, wifi_active, &bw->cb_menu_wifi_subtitle, &bw->cb_menu_wifi_icon, &bw->cb_menu_wifi_arrow,
+		G_CALLBACK(chromeos_menu_on_wifi_clicked), G_CALLBACK(chromeos_menu_on_wifi_arrow_clicked), ctx);
 	gtk_widget_set_sensitive(bw->cb_menu_wifi_pill, wifi_pill_sensitive);
 	if (bw->cb_menu_wifi_arrow)
 		gtk_widget_set_sensitive(bw->cb_menu_wifi_arrow, wifi_arrow_sensitive);
@@ -518,14 +516,13 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 			bluetooth_subtitle = "On";
 	}
 
-	GtkWidget *bluetooth = chromeos_menu_create_pill("󰂯", "Bluetooth", bluetooth_subtitle,
-													bluetooth_exists && bluetooth_powered, NULL, NULL, NULL,
-													G_CALLBACK(on_bluetooth_clicked), G_CALLBACK(on_bluetooth_arrow_clicked), ctx);
+	GtkWidget *bluetooth =
+		chromeos_menu_create_pill("󰂯", "Bluetooth", bluetooth_subtitle, bluetooth_exists && bluetooth_powered, NULL, NULL, NULL,
+								  G_CALLBACK(on_bluetooth_clicked), G_CALLBACK(on_bluetooth_arrow_clicked), ctx);
 	gtk_grid_attach(GTK_GRID(grid), bluetooth, 0, 1, 2, 1);
 
-	GtkWidget *keyboard = chromeos_menu_create_pill("󰌌", "Keyboard",
-													state->sys_data.kb_layout[0] ? state->sys_data.kb_layout : "US", FALSE,
-													&bw->cb_menu_kb_label, NULL, NULL, G_CALLBACK(on_keyboard_clicked),
+	GtkWidget *keyboard = chromeos_menu_create_pill("󰌌", "Keyboard", state->sys_data.kb_layout[0] ? state->sys_data.kb_layout : "US",
+													FALSE, &bw->cb_menu_kb_label, NULL, NULL, G_CALLBACK(on_keyboard_clicked),
 													G_CALLBACK(on_keyboard_arrow_clicked), ctx);
 	if (bw->cb_menu_kb_label)
 		g_signal_connect(bw->cb_menu_kb_label, "destroy", G_CALLBACK(gtk_widget_destroyed), &bw->cb_menu_kb_label);

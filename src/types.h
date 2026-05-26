@@ -181,6 +181,7 @@ typedef struct {
     GtkWidget *cb_menu_wifi_arrow;
     GtkWidget *cb_menu_main_box;
     GtkWidget *cb_menu_brightness_slider;
+    GtkWidget *cb_menu_volume_slider;
 
 #define POPUP_TYPE_BRIGHTNESS 0
 #define POPUP_TYPE_VOLUME     1
@@ -206,6 +207,7 @@ typedef struct AppState {
     GList *bar_windows;
     SystemData sys_data;
     time_t last_manual_vol_update;
+    time_t last_manual_bright_update;
     Config config;
     int has_fullscreen;  /* 1 when a fullscreen window is active */
     guint anim_timer_id;

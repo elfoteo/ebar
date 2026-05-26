@@ -41,8 +41,8 @@ void chromeos_menu_ellipsize_label(GtkWidget *label, int max_width_chars) {
 	gtk_label_set_max_width_chars(GTK_LABEL(label), max_width_chars);
 }
 
-GtkWidget *chromeos_menu_create_pill(const char *icon, const char *title, const char *subtitle, gboolean active,
-									 GtkWidget **subtitle_out, GtkWidget **icon_out, GtkWidget **arrow_out, GCallback on_click, GCallback on_arrow_click,
+GtkWidget *chromeos_menu_create_pill(const char *icon, const char *title, const char *subtitle, gboolean active, GtkWidget **subtitle_out,
+									 GtkWidget **icon_out, GtkWidget **arrow_out, GCallback on_click, GCallback on_arrow_click,
 									 gpointer user_data) {
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 	gtk_style_context_add_class(gtk_widget_get_style_context(box), "cb-menu-pill");
@@ -220,8 +220,11 @@ void chromeos_menu_apply_css(void) {
 					  "  font-size: 11px; "
 					  "  opacity: 0.8; "
 					  "} "
+					  ".cb-menu-grid { "
+					  "  margin-bottom: 12px; "
+					  "} "
 					  ".cb-menu-slider-box { "
-					  "  margin: 6px 0; "
+					  "  margin: 3px 0; "
 					  "} "
 					  ".cb-menu-slider-icon { "
 					  "  font-size: 18px; "
@@ -245,6 +248,9 @@ void chromeos_menu_apply_css(void) {
 					  "  min-width: 36px; "
 					  "} "
 					  ".cb-menu-slider-minimum highlight { "
+					  "  background-color: #5f6368; "
+					  "} "
+					  ".cb-menu-slider-muted highlight { "
 					  "  background-color: #5f6368; "
 					  "} "
 					  ".cb-menu-slider-icon-minimum { "
@@ -483,6 +489,7 @@ static void on_menu_destroy(GtkWidget *widget, gpointer data) {
 	bw->cb_menu_wifi_subtitle = NULL;
 	bw->cb_menu_main_box = NULL;
 	bw->cb_menu_brightness_slider = NULL;
+	bw->cb_menu_volume_slider = NULL;
 }
 
 void toggle_chromeos_menu(BarWindow *bw, AppState *state) {
@@ -574,9 +581,7 @@ void slider_set_visual_min(GtkRange *range, double visual_min) {
 	g_object_set_data(G_OBJECT(range), "slider-visual-min-bp", GINT_TO_POINTER((int)(visual_min * 100.0)));
 }
 
-gboolean slider_is_updating(GtkRange *range) {
-	return GPOINTER_TO_INT(g_object_get_data(G_OBJECT(range), "slider-updating"));
-}
+gboolean slider_is_updating(GtkRange *range) { return GPOINTER_TO_INT(g_object_get_data(G_OBJECT(range), "slider-updating")); }
 
 void slider_set_updating(GtkRange *range, gboolean updating) {
 	g_object_set_data(G_OBJECT(range), "slider-updating", GINT_TO_POINTER(updating));

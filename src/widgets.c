@@ -957,6 +957,20 @@ gboolean update_widgets_idle(gpointer data) {
 			if (bw->popup_window && gtk_widget_get_visible(bw->popup_window)) {
 				trigger_volume_popup_idle(bw);
 			}
+			if (bw->cb_menu_volume_slider && GTK_IS_RANGE(bw->cb_menu_volume_slider)) {
+				GtkRange *range = GTK_RANGE(bw->cb_menu_volume_slider);
+				GtkStyleContext *scale_ctx = gtk_widget_get_style_context(GTK_WIDGET(range));
+				if (d.vol_muted) {
+					gtk_style_context_add_class(scale_ctx, "cb-menu-slider-muted");
+				} else {
+					gtk_style_context_remove_class(scale_ctx, "cb-menu-slider-muted");
+				}
+				if (!slider_is_updating(range) && (now - w->last_manual_vol_update > 1)) {
+					slider_set_updating(range, TRUE);
+					gtk_range_set_value(range, slider_get_display_value(range, d.visual_volume));
+					slider_set_updating(range, FALSE);
+				}
+			}
 		}
 
 		if (brightness_changed) {
@@ -968,7 +982,7 @@ gboolean update_widgets_idle(gpointer data) {
 			}
 			if (bw->cb_menu_brightness_slider && GTK_IS_RANGE(bw->cb_menu_brightness_slider)) {
 				GtkRange *range = GTK_RANGE(bw->cb_menu_brightness_slider);
-				if (!slider_is_updating(range)) {
+				if (!slider_is_updating(range) && (now - w->last_manual_bright_update > 1)) {
 					slider_set_updating(range, TRUE);
 					gtk_range_set_value(range, slider_get_display_value(range, d.visual_brightness));
 					slider_set_updating(range, FALSE);

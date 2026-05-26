@@ -281,6 +281,7 @@ static void on_bright_scale_changed(GtkRange *range, gpointer data) {
 	if (state) {
 		pthread_mutex_lock(&state->mutex);
 		state->sys_data.brightness = (float)val;
+		state->last_manual_bright_update = time(NULL);
 		pthread_mutex_unlock(&state->mutex);
 	}
 	char cmd[64];
@@ -339,8 +340,12 @@ GtkWidget *chromeos_menu_create_volume_slider(MenuCtx *ctx) {
 	gboolean muted = ctx->state->sys_data.vol_muted;
 	pthread_mutex_unlock(&ctx->state->mutex);
 
-	return create_menu_slider("󰕾", "󰝟", vol, G_CALLBACK(on_vol_scale_changed), G_CALLBACK(on_mute_clicked),
-							  G_CALLBACK(on_volume_arrow_clicked), ctx, muted, NULL);
+	GtkWidget *scale = NULL;
+	GtkWidget *box = create_menu_slider("󰕾", "󰝟", vol, G_CALLBACK(on_vol_scale_changed), G_CALLBACK(on_mute_clicked),
+							  G_CALLBACK(on_volume_arrow_clicked), ctx, muted, &scale);
+	if (ctx->bw)
+		ctx->bw->cb_menu_volume_slider = scale;
+	return box;
 }
 
 GtkWidget *chromeos_menu_create_brightness_nightlight_slider(MenuCtx *ctx) {
@@ -438,10 +443,12 @@ void chromeos_menu_show_volume(BarWindow *bw, AppState *state) {
 	gboolean muted = state->sys_data.vol_muted;
 	pthread_mutex_unlock(&state->mutex);
 
+	GtkWidget *vol_scale = NULL;
 	gtk_box_pack_start(GTK_BOX(content),
 					   create_menu_slider("󰕾", "󰝟", vol, G_CALLBACK(on_vol_scale_changed), G_CALLBACK(on_mute_clicked),
-										  NULL, slider_ctx, muted, NULL),
+										  NULL, slider_ctx, muted, &vol_scale),
 					   FALSE, FALSE, 0);
+	bw->cb_menu_volume_slider = vol_scale;
 
 	gtk_widget_show_all(bw->cb_menu_main_box);
 }

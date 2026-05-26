@@ -1,4 +1,8 @@
 #include "widgets.h"
+#include "chromeos_menu.h"
+#include "chromeos_menu_internal.h"
+#include "chromeos_popup.h"
+#include "gtk-layer-shell.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,6 +71,9 @@ static gboolean on_volume_scroll(GtkWidget *widget, GdkEventScroll *event, gpoin
 	char cmd[64];
 	snprintf(cmd, sizeof(cmd), "pactl set-sink-volume @DEFAULT_SINK@ %.0f%%", vol);
 	g_spawn_command_line_async(cmd, NULL);
+	/* Trigger volume popup on each bar window */
+	for (GList *l = w->bar_windows; l != NULL; l = l->next)
+		g_idle_add(trigger_volume_popup_idle, l->data);
 	update_widgets_idle(w);
 	return TRUE;
 }
@@ -90,7 +97,7 @@ static gboolean on_volume_click(GtkWidget *widget, GdkEventButton *event, gpoint
 static gboolean on_volume_ring_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
 	AppState *state = (AppState *)data;
 	pthread_mutex_lock(&state->mutex);
-	double vol = state->sys_data.vol;
+	double vol = state->sys_data.visual_volume;
 	int muted = state->sys_data.vol_muted;
 	pthread_mutex_unlock(&state->mutex);
 
@@ -343,6 +350,100 @@ static void nightlight_reset(AppState *state) {
 	pthread_mutex_lock(&state->mutex);
 	state->sys_data.nightlight_error = err;
 	pthread_mutex_unlock(&state->mutex);
+}
+
+static gboolean on_brightness_scroll(GtkWidget *widget, GdkEventScroll *event, gpointer data) {
+	(void)widget;
+	BarWindow *bw = (BarWindow *)data;
+	AppState *w = bw->state;
+	double delta = 0;
+	if (event->direction == GDK_SCROLL_UP)
+		delta = 5.0;
+	else if (event->direction == GDK_SCROLL_DOWN)
+		delta = -5.0;
+	else if (event->direction == GDK_SCROLL_SMOOTH)
+		delta = -event->delta_y * 5.0;
+	if (delta == 0)
+		return TRUE;
+	pthread_mutex_lock(&w->mutex);
+	w->sys_data.brightness = CLAMP(w->sys_data.brightness + delta, 0.0, 100.0);
+	double bright = w->sys_data.brightness;
+	pthread_mutex_unlock(&w->mutex);
+	char cmd[64];
+	snprintf(cmd, sizeof(cmd), "brightnessctl set %.0f%%", bright);
+	g_spawn_command_line_async(cmd, NULL);
+	g_idle_add(trigger_brightness_popup_idle, bw);
+	update_widgets_idle(w);
+	return TRUE;
+}
+
+static gboolean on_brightness_click(GtkWidget *widget, GdkEventButton *event, gpointer data) {
+	(void)widget;
+	(void)data;
+	if (event->button == 1) {
+		/* Show menu on left click? No, usually it's just scroll or right click for settings */
+	}
+	return TRUE;
+}
+
+static gboolean on_brightness_ring_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
+	AppState *state = (AppState *)data;
+	pthread_mutex_lock(&state->mutex);
+	double bright = state->sys_data.visual_brightness;
+	pthread_mutex_unlock(&state->mutex);
+
+	GtkAllocation alloc;
+	gtk_widget_get_allocation(widget, &alloc);
+	double cx = alloc.width / 2.0;
+	double cy = alloc.height / 2.0;
+	double thickness = 3.0;
+	double radius = (MIN(alloc.width, alloc.height) / 2.0) - thickness / 2.0 - 2.0;
+	double start = -M_PI / 2.0;
+
+	GdkRGBA ring;
+	if (!gdk_rgba_parse(&ring, state->config.colors.ring_color))
+		ring = (GdkRGBA){1.0, 1.0, 1.0, 0.9};
+
+	cairo_set_line_width(cr, thickness);
+	cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+
+	/* Background track */
+	cairo_set_source_rgba(cr, ring.red, ring.green, ring.blue, 0.15);
+	cairo_arc(cr, cx, cy, radius, 0, 2 * M_PI);
+	cairo_stroke(cr);
+
+	/* Brightness arc */
+	if (bright > 0) {
+		double end = start + (bright / 100.0) * 2.0 * M_PI;
+		gdk_cairo_set_source_rgba(cr, &ring);
+		cairo_arc(cr, cx, cy, radius, start, end);
+		cairo_stroke(cr);
+	}
+	return FALSE;
+}
+
+GtkWidget *widget_brightness(BarWindow *bw, AppState *state) {
+	GtkWidget *overlay = gtk_overlay_new();
+	GtkWidget *btn = gtk_label_new("󰃟");
+	gtk_style_context_add_class(gtk_widget_get_style_context(btn), "nightlight-btn"); // Reuse nightlight-btn style
+	bw->brightness_btn = btn;
+
+	GtkWidget *ring = gtk_drawing_area_new();
+	gtk_widget_set_size_request(ring, 48, 48);
+	g_signal_connect(ring, "draw", G_CALLBACK(on_brightness_ring_draw), state);
+	bw->brightness_ring = ring;
+
+	GtkWidget *ev = gtk_event_box_new();
+	gtk_event_box_set_visible_window(GTK_EVENT_BOX(ev), FALSE);
+	gtk_container_add(GTK_CONTAINER(ev), overlay);
+	gtk_widget_add_events(ev, GDK_SCROLL_MASK | GDK_BUTTON_PRESS_MASK);
+	g_signal_connect(ev, "scroll-event", G_CALLBACK(on_brightness_scroll), bw);
+	g_signal_connect(ev, "button-press-event", G_CALLBACK(on_brightness_click), state);
+
+	gtk_container_add(GTK_CONTAINER(overlay), btn);
+	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), ring);
+
+	return ev;
 }
 
 static gboolean on_nightlight_ring_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
@@ -644,89 +745,20 @@ void update_metric_widget(GtkWidget *widget, MetricType type, SystemData *d, int
 	}
 }
 
-/* Read link quality (0-70) from /proc/net/wireless; returns -1 if no wifi. */
-static int get_wifi_strength(void) {
-	FILE *f = fopen("/proc/net/wireless", "r");
-	if (!f)
-		return -1;
-	char line[256];
-	/* Skip the two header lines */
-	fgets(line, sizeof(line), f);
-	fgets(line, sizeof(line), f);
-	/* First actual interface line */
-	if (!fgets(line, sizeof(line), f)) {
-		fclose(f);
-		return -1;
-	}
-	fclose(f);
-	/* Format: "  wlo1: 0000  64.  -46.  -256. ..." */
-	char *colon = strchr(line, ':');
-	if (!colon)
-		return -1;
-	int status, link;
-	if (sscanf(colon + 1, " %d %d.", &status, &link) < 2)
-		return -1;
-	return link; /* 0-70 */
-}
-
-static const char *get_wifi_icon(void) {
-	int q = get_wifi_strength();
+static const char *get_wifi_icon(int q) {
 	if (q < 0)
 		return "󰤮";
 	if (q == 0)
 		return "󰤟";
-	if (q <= 17)
+	if (q < 25)
 		return "󰤟";
-	if (q <= 34)
+	if (q < 50)
 		return "󰤢";
-	if (q <= 51)
+	if (q < 75)
 		return "󰤥";
-	if (q <= 65)
-		return "󰤨";
 	return "󰤨";
 }
 
-/* Returns battery capacity 0-100, or -1 if no battery. Also probes the
- * canonical power supply paths BAT0/BAT1/BAT2 and UBDG. */
-static int get_battery_capacity(char *bat_name_out, size_t bat_name_sz) {
-	static const char *paths[] = {
-		"/sys/class/power_supply/BAT0",
-		"/sys/class/power_supply/BAT1",
-		"/sys/class/power_supply/BAT2",
-		"/sys/class/power_supply/UBDG",
-	};
-	for (size_t i = 0; i < sizeof(paths) / sizeof(paths[0]); i++) {
-		char cap_path[160];
-		snprintf(cap_path, sizeof(cap_path), "%s/capacity", paths[i]);
-		FILE *f = fopen(cap_path, "r");
-		if (f) {
-			int cap = 0;
-			if (fscanf(f, "%d", &cap) == 1) {
-				fclose(f);
-				if (bat_name_out)
-					snprintf(bat_name_out, bat_name_sz, "%s", paths[i]);
-				return cap;
-			}
-			fclose(f);
-		}
-	}
-	return -1;
-}
-
-/* Returns 1 if the battery is charging, 0 otherwise. */
-static int get_battery_charging(const char *bat_path) {
-	if (!bat_path || !bat_path[0])
-		return 0;
-	char status_path[160];
-	snprintf(status_path, sizeof(status_path), "%s/status", bat_path);
-	FILE *f = fopen(status_path, "r");
-	if (!f)
-		return 0;
-	char status[32] = {0};
-	fscanf(f, "%31s", status);
-	fclose(f);
-	return (strncmp(status, "Charging", 8) == 0) ? 1 : 0;
-}
 
 static const char *get_battery_icon(int cap, int charging) {
 	/* Index 0 = ≤10%, index 9 = 91-100% */
@@ -750,119 +782,241 @@ gboolean update_widgets_idle(gpointer data) {
 	AppState *w = (AppState *)data;
 	pthread_mutex_lock(&w->mutex);
 	SystemData d = w->sys_data;
+	int active_workspace = w->active_workspace;
+	int ws_win_count[MAX_WORKSPACES + 1];
+	memcpy(ws_win_count, w->ws_win_count, sizeof(ws_win_count));
 	pthread_mutex_unlock(&w->mutex);
 
 	time_t now = time(NULL);
+	static SystemData last_d;
+	static int last_d_init = 0;
+	static time_t last_time = 0;
+	static int last_active_ws = -1;
+	static int last_ws_count[MAX_WORKSPACES + 1];
+	static int last_ws_count_init = 0;
+
+	if (!last_d_init) {
+		memset(&last_d, 0, sizeof(last_d));
+		last_d.vol = -1;
+		last_d.vol_muted = -1;
+		last_d.visual_brightness = -1;
+		last_d.nightlight_level = -1;
+		last_d_init = 1;
+	}
+	if (!last_ws_count_init) {
+		memset(last_ws_count, -1, sizeof(last_ws_count));
+		last_ws_count_init = 1;
+	}
+
 	struct tm tmv = *localtime(&now);
 	char tstr[64], dstr[64], cb_dstr[64];
-	strftime(tstr, sizeof(tstr), w->config.clock.time_format, &tmv);
-	strftime(dstr, sizeof(dstr), w->config.clock.date_format, &tmv);
-	strftime(cb_dstr, sizeof(cb_dstr), "%b %-d", &tmv);
+	
+	// Check if time components changed (hour/minute/date)
+	int time_changed = (now / 60 != last_time / 60);
+	last_time = now;
+
+	if (time_changed) {
+		strftime(tstr, sizeof(tstr), w->config.clock.time_format, &tmv);
+		strftime(dstr, sizeof(dstr), w->config.clock.date_format, &tmv);
+		strftime(cb_dstr, sizeof(cb_dstr), "%b %-d", &tmv);
+	}
+
+	int bat_changed = (d.bat_percent != last_d.bat_percent || d.bat_charging != last_d.bat_charging || strcmp(d.bat_time_remaining, last_d.bat_time_remaining) != 0);
+	int wifi_changed = (d.wifi_enabled != last_d.wifi_enabled || d.wifi_connected != last_d.wifi_connected || d.wifi_strength != last_d.wifi_strength || strcmp(d.wifi_ssid, last_d.wifi_ssid) != 0 || d.wifi_adapter_exists != last_d.wifi_adapter_exists);
+	int kb_changed = (strcmp(d.kb_layout, last_d.kb_layout) != 0);
+
+	int metrics_changed = (d.ram_val != last_d.ram_val || d.cpu_val != last_d.cpu_val || d.disk_val != last_d.disk_val || d.temp_val != last_d.temp_val || d.gpu_val != last_d.gpu_val || d.gpu_temp_val != last_d.gpu_temp_val);
+
+	int vol_changed = (d.vol != last_d.vol || d.vol_muted != last_d.vol_muted || d.visual_volume != last_d.visual_volume);
+	int brightness_changed = (d.visual_brightness != last_d.visual_brightness);
+	int nightlight_changed = (d.nightlight_level != last_d.nightlight_level || d.nightlight_error != last_d.nightlight_error);
+	int media_changed = (d.is_playing != last_d.is_playing || strcmp(d.media_title, last_d.media_title) != 0 || strcmp(d.media_artist, last_d.media_artist) != 0);
 
 	for (GList *l = w->bar_windows; l != NULL; l = l->next) {
 		BarWindow *bw = (BarWindow *)l->data;
-		if (bw->clock_time_label)
-			gtk_label_set_text(GTK_LABEL(bw->clock_time_label), tstr);
-		if (bw->clock_date_label)
-			gtk_label_set_text(GTK_LABEL(bw->clock_date_label), dstr);
-		if (bw->cb_date_label)
-			gtk_label_set_text(GTK_LABEL(bw->cb_date_label), cb_dstr);
-		if (bw->cb_sys_label) {
-			char sys_buf[64], t_buf[32];
-			strftime(t_buf, sizeof(t_buf), "%-I:%M", &tmv);
-			char bat_path[160] = {0};
-			int cap = get_battery_capacity(bat_path, sizeof(bat_path));
-			int charging = get_battery_charging(bat_path);
-			const char *b_icon = get_battery_icon(cap, charging);
-			const char *w_icon = get_wifi_icon();
-			snprintf(sys_buf, sizeof(sys_buf), "%s %s  %s", t_buf, w_icon, b_icon);
-			gtk_label_set_text(GTK_LABEL(bw->cb_sys_label), sys_buf);
+		
+		if (time_changed) {
+			if (bw->clock_time_label)
+				gtk_label_set_text(GTK_LABEL(bw->clock_time_label), tstr);
+			if (bw->clock_date_label)
+				gtk_label_set_text(GTK_LABEL(bw->clock_date_label), dstr);
+			if (bw->cb_date_label)
+				gtk_label_set_text(GTK_LABEL(bw->cb_date_label), cb_dstr);
 		}
-		if (bw->cb_layout_label && d.kb_layout[0])
-			gtk_label_set_text(GTK_LABEL(bw->cb_layout_label), d.kb_layout);
-		if (bw->cb_menu_kb_label && d.kb_layout[0])
-			gtk_label_set_text(GTK_LABEL(bw->cb_menu_kb_label), d.kb_layout);
 
-		if (bw->cb_menu_bat_label) {
-			char bat_buf[128];
-			if (d.bat_percent >= 0) {
-				snprintf(bat_buf, sizeof(bat_buf), "%d%% - %s", d.bat_percent, d.bat_time_remaining[0] ? d.bat_time_remaining : (d.bat_charging ? "Charging" : "Discharging"));
-			} else {
-				snprintf(bat_buf, sizeof(bat_buf), "Battery: N/A");
+		if (time_changed || wifi_changed || bat_changed) {
+			if (bw->cb_sys_label) {
+				char sys_buf[64], t_buf[32];
+				strftime(t_buf, sizeof(t_buf), "%-I:%M", &tmv);
+				const char *b_icon = get_battery_icon(d.bat_percent, d.bat_charging);
+
+				const char *w_icon = "󰤮";
+				if (d.wifi_enabled) {
+					if (d.wifi_connected) w_icon = get_wifi_icon(d.wifi_strength);
+					else w_icon = "󰤟";
+				}
+
+				snprintf(sys_buf, sizeof(sys_buf), "%s %s  %s", t_buf, w_icon, b_icon);
+				gtk_label_set_text(GTK_LABEL(bw->cb_sys_label), sys_buf);
 			}
-			gtk_label_set_text(GTK_LABEL(bw->cb_menu_bat_label), bat_buf);
 		}
 
-		for (int i = 0; i < 6; i++)
-			update_metric_widget(bw->metrics_widgets[i], (MetricType)i, &d, w->config.metrics.use_bars);
-
-		const char *vicon = "󰕾";
-		if (d.vol_muted || d.vol == 0)
-			vicon = "󰝟";
-		else if (d.vol <= 33)
-			vicon = "󰕿";
-		else if (d.vol <= 66)
-			vicon = "󰖀";
-		char vstr[32];
-		if (d.vol_muted)
-			snprintf(vstr, sizeof(vstr), "%s%s", vicon, w->config.volume.show_percent ? " Muted" : "");
-		else if (w->config.volume.show_percent)
-			snprintf(vstr, sizeof(vstr), "%s %.0f%%", vicon, d.vol);
-		else
-			snprintf(vstr, sizeof(vstr), "%s", vicon);
-		if (bw->volume_btn) {
-			gtk_label_set_text(GTK_LABEL(bw->volume_btn), vstr);
-			GtkStyleContext *vctx = gtk_widget_get_style_context(bw->volume_btn);
-			if (d.vol > 66 && !d.vol_muted)
-				gtk_style_context_add_class(vctx, "vol-high");
-			else
-				gtk_style_context_remove_class(vctx, "vol-high");
+		if (kb_changed) {
+			if (bw->cb_layout_label && d.kb_layout[0])
+				gtk_label_set_text(GTK_LABEL(bw->cb_layout_label), d.kb_layout);
+			if (bw->cb_menu_kb_label && GTK_IS_LABEL(bw->cb_menu_kb_label) && d.kb_layout[0])
+				gtk_label_set_text(GTK_LABEL(bw->cb_menu_kb_label), d.kb_layout);
 		}
-		if (bw->volume_ring)
-			gtk_widget_queue_draw(bw->volume_ring);
 
-		/* Nightlight –  sun (0%) / 󰖔 moon (>0%) */
-		int nl_error = d.nightlight_error;
-		int nl_active = (d.nightlight_level > 0);
-		const char *nl_icon = nl_active ? "󰖔" : "󰖙";
-
-		if (bw->nightlight_btn) {
-			gtk_label_set_text(GTK_LABEL(bw->nightlight_btn), nl_icon);
-			GtkStyleContext *nlctx = gtk_widget_get_style_context(bw->nightlight_btn);
-			if (nl_active && !nl_error) {
-				gtk_style_context_add_class(nlctx, "nightlight-on");
-				gtk_style_context_remove_class(nlctx, "nightlight-off");
-			} else {
-				gtk_style_context_remove_class(nlctx, "nightlight-on");
-				gtk_style_context_add_class(nlctx, "nightlight-off");
+		if (bat_changed) {
+			if (bw->cb_menu_bat_label && GTK_IS_LABEL(bw->cb_menu_bat_label)) {
+				char bat_buf[128];
+				if (d.bat_percent >= 0) {
+					snprintf(bat_buf, sizeof(bat_buf), "%d%% - %s", d.bat_percent, d.bat_time_remaining[0] ? d.bat_time_remaining : (d.bat_charging ? "Charging" : "Discharging"));
+				} else {
+					snprintf(bat_buf, sizeof(bat_buf), "Battery: N/A");
+				}
+				gtk_label_set_text(GTK_LABEL(bw->cb_menu_bat_label), bat_buf);
 			}
-			if (nl_error)
-				gtk_style_context_add_class(nlctx, "nightlight-error");
-			else
-				gtk_style_context_remove_class(nlctx, "nightlight-error");
 		}
-		if (bw->nightlight_ring)
-			gtk_widget_queue_draw(bw->nightlight_ring);
 
-		if (bw->media_play_btn)
-			gtk_button_set_label(GTK_BUTTON(bw->media_play_btn), d.is_playing ? "󰏤" : "󰐊");
-		int has_media = (d.media_title[0] != '\0');
-		int show_title = has_media && w->config.media.show_title;
-		int show_artist = has_media && w->config.media.show_artist && d.media_artist[0] != '\0';
-		/* Separator is only visible when media is playing AND at least one text line shows */
-		if (bw->media_sep)
-			gtk_widget_set_visible(bw->media_sep, show_title || show_artist);
-		if (bw->media_title_label) {
-			gtk_label_set_text(GTK_LABEL(bw->media_title_label), d.media_title);
-			gtk_widget_set_visible(bw->media_title_label, show_title);
-			gtk_label_set_max_width_chars(GTK_LABEL(bw->media_title_label), w->config.media.max_title_width / 8);
+		if (wifi_changed) {
+			if (bw->cb_menu_wifi_pill && GTK_IS_WIDGET(bw->cb_menu_wifi_pill)) {
+				GtkStyleContext *ctx = gtk_widget_get_style_context(bw->cb_menu_wifi_pill);
+				if (d.wifi_enabled) {
+					gtk_style_context_add_class(ctx, "cb-menu-pill-active");
+					if (bw->cb_menu_wifi_subtitle && GTK_IS_LABEL(bw->cb_menu_wifi_subtitle)) {
+						if (d.wifi_connected)
+							gtk_label_set_text(GTK_LABEL(bw->cb_menu_wifi_subtitle), d.wifi_ssid[0] ? d.wifi_ssid : "Connected");
+						else
+							gtk_label_set_text(GTK_LABEL(bw->cb_menu_wifi_subtitle), "Not connected");
+					}
+				} else {
+					gtk_style_context_remove_class(ctx, "cb-menu-pill-active");
+					if (bw->cb_menu_wifi_subtitle && GTK_IS_LABEL(bw->cb_menu_wifi_subtitle))
+						gtk_label_set_text(GTK_LABEL(bw->cb_menu_wifi_subtitle), "Off");
+				}
+				if (!d.wifi_adapter_exists) {
+					gtk_widget_set_sensitive(bw->cb_menu_wifi_pill, FALSE);
+					if (bw->cb_menu_wifi_subtitle && GTK_IS_LABEL(bw->cb_menu_wifi_subtitle))
+						gtk_label_set_text(GTK_LABEL(bw->cb_menu_wifi_subtitle), "No adapter");
+				} else {
+					gtk_widget_set_sensitive(bw->cb_menu_wifi_pill, TRUE);
+				}
+			}
 		}
-		if (bw->media_artist_label) {
-			gtk_label_set_text(GTK_LABEL(bw->media_artist_label), d.media_artist);
-			gtk_widget_set_visible(bw->media_artist_label, show_artist);
+
+		if (metrics_changed) {
+			for (int i = 0; i < 6; i++)
+				update_metric_widget(bw->metrics_widgets[i], (MetricType)i, &d, w->config.metrics.use_bars);
+		}
+
+		if (vol_changed) {
+			const char *vicon = "󰕾";
+			if (d.vol_muted || d.vol == 0)
+				vicon = "󰝟";
+			else if (d.vol <= 33)
+				vicon = "󰕿";
+			else if (d.vol <= 66)
+				vicon = "󰖀";
+			char vstr[32];
+			if (d.vol_muted)
+				snprintf(vstr, sizeof(vstr), "%s%s", vicon, w->config.volume.show_percent ? " Muted" : "");
+			else if (w->config.volume.show_percent)
+				snprintf(vstr, sizeof(vstr), "%s %.0f%%", vicon, d.vol);
+			else
+				snprintf(vstr, sizeof(vstr), "%s", vicon);
+			if (bw->volume_btn) {
+				gtk_label_set_text(GTK_LABEL(bw->volume_btn), vstr);
+				GtkStyleContext *vctx = gtk_widget_get_style_context(bw->volume_btn);
+				if (d.vol > 66 && !d.vol_muted)
+					gtk_style_context_add_class(vctx, "vol-high");
+				else
+					gtk_style_context_remove_class(vctx, "vol-high");
+			}
+			if (bw->volume_ring)
+				gtk_widget_queue_draw(bw->volume_ring);
+			
+			if (bw->popup_window && gtk_widget_get_visible(bw->popup_window)) {
+				trigger_volume_popup_idle(bw);
+			}
+		}
+
+		if (brightness_changed) {
+			if (bw->brightness_ring)
+				gtk_widget_queue_draw(bw->brightness_ring);
+			
+			if (bw->popup_window && gtk_widget_get_visible(bw->popup_window)) {
+				trigger_brightness_popup_idle(bw);
+			}
+			if (bw->cb_menu_brightness_slider && GTK_IS_RANGE(bw->cb_menu_brightness_slider)) {
+				GtkRange *range = GTK_RANGE(bw->cb_menu_brightness_slider);
+				if (!slider_is_updating(range)) {
+					slider_set_updating(range, TRUE);
+					gtk_range_set_value(range, slider_get_display_value(range, d.visual_brightness));
+					slider_set_updating(range, FALSE);
+				}
+			}
+		}
+
+		if (nightlight_changed) {
+			/* Nightlight – sun (off) / moon (on) */
+			int nl_error = d.nightlight_error;
+			int nl_active = (d.nightlight_level > 0 || d.nightlight_on);
+			const char *nl_icon = nl_active ? "󰖔" : "󰖙";
+
+			if (bw->nightlight_btn) {
+				gtk_label_set_text(GTK_LABEL(bw->nightlight_btn), nl_icon);
+				GtkStyleContext *nlctx = gtk_widget_get_style_context(bw->nightlight_btn);
+				if (nl_active && !nl_error) {
+					gtk_style_context_add_class(nlctx, "nightlight-on");
+					gtk_style_context_remove_class(nlctx, "nightlight-off");
+				} else {
+					gtk_style_context_remove_class(nlctx, "nightlight-on");
+					gtk_style_context_add_class(nlctx, "nightlight-off");
+				}
+				if (nl_error)
+					gtk_style_context_add_class(nlctx, "nightlight-error");
+				else
+					gtk_style_context_remove_class(nlctx, "nightlight-error");
+			}
+			if (bw->nightlight_ring)
+				gtk_widget_queue_draw(bw->nightlight_ring);
+		}
+
+		if (media_changed) {
+			if (bw->media_play_btn)
+				gtk_button_set_label(GTK_BUTTON(bw->media_play_btn), d.is_playing ? "󰏤" : "󰐊");
+			int has_media = (d.media_title[0] != '\0');
+			int show_title = has_media && w->config.media.show_title;
+			int show_artist = has_media && w->config.media.show_artist && d.media_artist[0] != '\0';
+			/* Separator is only visible when media is playing AND at least one text line shows */
+			if (bw->media_sep)
+				gtk_widget_set_visible(bw->media_sep, show_title || show_artist);
+			if (bw->media_title_label) {
+				gtk_label_set_text(GTK_LABEL(bw->media_title_label), d.media_title);
+				gtk_widget_set_visible(bw->media_title_label, show_title);
+				gtk_label_set_max_width_chars(GTK_LABEL(bw->media_title_label), w->config.media.max_title_width / 8);
+			}
+			if (bw->media_artist_label) {
+				gtk_label_set_text(GTK_LABEL(bw->media_artist_label), d.media_artist);
+				gtk_widget_set_visible(bw->media_artist_label, show_artist);
+			}
 		}
 	}
-	update_workspace_display(w);
+
+	int ws_changed = (active_workspace != last_active_ws || memcmp(ws_win_count, last_ws_count, sizeof(ws_win_count)) != 0);
+	if (ws_changed) {
+		update_workspace_display(w);
+		last_active_ws = active_workspace;
+		memcpy(last_ws_count, ws_win_count, sizeof(ws_win_count));
+	}
+
+	last_d = d;
+
+	extern void ensure_anim_timer(AppState *state);
+	ensure_anim_timer(w);
+
 	return G_SOURCE_REMOVE;
 }
 

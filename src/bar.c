@@ -202,6 +202,7 @@ static void add_widgets_to_box(GtkWidget *box, const char *csv,
         else if (!strcmp(tok, "volume"))     w = widget_volume(bw, state);
         else if (!strcmp(tok, "metrics"))    w = widget_metrics(bw, state);
         else if (!strcmp(tok, "nightlight")) w = widget_nightlight(bw, state);
+        else if (!strcmp(tok, "brightness")) w = widget_brightness(bw, state);
         else if (!strcmp(tok, "launcher"))   w = widget_launcher(bw, state);
 
         if (w) gtk_box_pack_start(GTK_BOX(box), w, FALSE, FALSE, 0);
@@ -219,12 +220,20 @@ static void on_bar_window_destroy(GtkWidget *widget, gpointer data) {
     if (ctx->bw->menu_window) {
         gtk_widget_destroy(ctx->bw->menu_window);
     }
+    if (ctx->bw->popup_window) {
+        gtk_widget_destroy(ctx->bw->popup_window);
+    }
     g_free(ctx->bw);
     g_free(ctx);
 }
 
 /* ── Bar window creation ─────────────────────────────────────────────────── */
 void create_bar_window(GdkMonitor *monitor, AppState *state) {
+    if (state->config.mode == MODE_CHROMEOS) {
+        create_chromeos_bar_window(monitor, state);
+        return;
+    }
+
     GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     GdkScreen *screen = gdk_screen_get_default();
     GdkVisual *visual = gdk_screen_get_rgba_visual(screen);
@@ -252,11 +261,7 @@ void create_bar_window(GdkMonitor *monitor, AppState *state) {
 
     BarWindow *bw = g_new0(BarWindow, 1);
     bw->window = win;
-
-    if (state->config.mode == MODE_CHROMEOS) {
-        create_chromeos_bar_window(monitor, state);
-        return;
-    }
+    bw->state = state;
 
     /* Outer hbox – same spacing (12) */
     GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, state->config.spacing);

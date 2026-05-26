@@ -2,6 +2,7 @@
 #define CHROMEOS_BAR_H
 
 #include "types.h"
+#include "chromeos_popup.h"
 
 void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state);
 void apply_chromeos_css(AppState *state);

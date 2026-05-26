@@ -1,4 +1,7 @@
 #include "metrics.h"
+#include "bar.h"
+#include "bluetooth.h"
+#include "wifi.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,6 +9,8 @@
 #include <unistd.h>
 #include <glob.h>
 #include <libupower-glib/upower.h>
+extern gboolean update_widgets_idle(gpointer data);
+extern gboolean trigger_volume_popup_idle(gpointer data);
 
 static int layout_has_gpu(Config *cfg) {
     for (int r = 0; r < 2; r++)
@@ -149,21 +154,16 @@ static void fetch_volume(AppState *w) {
 
     float vol = 0;
     int muted = 0;
-    FILE *fp = popen("pactl get-sink-volume @DEFAULT_SINK@", "r");
+    FILE *fp = popen("pactl get-sink-volume @DEFAULT_SINK@; pactl get-sink-mute @DEFAULT_SINK@", "r");
     if (fp) {
         char buf[256];
-        if (fgets(buf, sizeof(buf), fp)) {
-            char *p = strstr(buf, "/ ");
-            if (p) vol = atof(p + 2);
-        }
-        pclose(fp);
-    }
-
-    fp = popen("pactl get-sink-mute @DEFAULT_SINK@", "r");
-    if (fp) {
-        char buf[64];
-        if (fgets(buf, sizeof(buf), fp)) {
-            if (strstr(buf, "yes")) muted = 1;
+        while (fgets(buf, sizeof(buf), fp)) {
+            if (strstr(buf, "Volume:")) {
+                char *p = strstr(buf, "/ ");
+                if (p) vol = atof(p + 2);
+            } else if (strstr(buf, "Mute:")) {
+                if (strstr(buf, "yes")) muted = 1;
+            }
         }
         pclose(fp);
     }
@@ -171,6 +171,46 @@ static void fetch_volume(AppState *w) {
     pthread_mutex_lock(&w->mutex);
     w->sys_data.vol = vol;
     w->sys_data.vol_muted = muted;
+    pthread_mutex_unlock(&w->mutex);
+}
+
+void fetch_brightness(AppState *w) {
+    static char actual_path[256] = "";
+    static char max_path[256] = "";
+
+    if (actual_path[0] == '\0') {
+        glob_t g;
+        if (glob("/sys/class/backlight/*/actual_brightness", 0, NULL, &g) == 0) {
+            if (g.gl_pathc > 0) {
+                strncpy(actual_path, g.gl_pathv[0], sizeof(actual_path) - 1);
+                char *p = strstr(actual_path, "actual_brightness");
+                if (p) {
+                    size_t prefix_len = p - actual_path;
+                    strncpy(max_path, actual_path, prefix_len);
+                    strcpy(max_path + prefix_len, "max_brightness");
+                }
+            }
+            globfree(&g);
+        }
+    }
+
+    if (actual_path[0] == '\0') return;
+
+    long actual = 0, max = 1;
+    FILE *f = fopen(actual_path, "r");
+    if (f) {
+        if (fscanf(f, "%ld", &actual) != 1) actual = 0;
+        fclose(f);
+    }
+    f = fopen(max_path, "r");
+    if (f) {
+        if (fscanf(f, "%ld", &max) != 1) max = 1;
+        fclose(f);
+    }
+
+    float b = (float)actual * 100.0f / (float)max;
+    pthread_mutex_lock(&w->mutex);
+    w->sys_data.brightness = b;
     pthread_mutex_unlock(&w->mutex);
 }
 
@@ -225,16 +265,103 @@ static void fetch_battery(AppState *w) {
     pthread_mutex_unlock(&w->mutex);
 }
 
-extern gboolean update_widgets_idle(gpointer data);
+static void fetch_wifi(AppState *w) {
+    int exists = 0;
+    int enabled = 0;
+    int connected = 0;
+    int strength = -1;
+    char ssid[64] = "";
+    wifi_get_status(&exists, &enabled, &connected, ssid, sizeof(ssid), &strength);
 
-void *metrics_thread_func(void *data) {
+    pthread_mutex_lock(&w->mutex);
+    w->sys_data.wifi_adapter_exists = exists;
+    w->sys_data.wifi_enabled = enabled;
+    w->sys_data.wifi_connected = connected;
+    w->sys_data.wifi_strength = strength;
+    g_strlcpy(w->sys_data.wifi_ssid, ssid, sizeof(w->sys_data.wifi_ssid));
+    pthread_mutex_unlock(&w->mutex);
+}
+
+static void fetch_bluetooth(AppState *w) {
+    int exists = 0;
+    int powered = 0;
+    int connected = 0;
+    char device[64] = "";
+
+    bluetooth_get_status(&exists, &powered, &connected, device, sizeof(device));
+
+    pthread_mutex_lock(&w->mutex);
+    w->sys_data.bluetooth_adapter_exists = exists;
+    w->sys_data.bluetooth_powered = powered;
+    w->sys_data.bluetooth_connected = connected;
+    g_strlcpy(w->sys_data.bluetooth_device, device, sizeof(w->sys_data.bluetooth_device));
+    pthread_mutex_unlock(&w->mutex);
+}
+
+extern gboolean update_widgets_idle(gpointer data);
+void *volume_thread_func(void *data) {
     AppState *w = (AppState *)data;
+    fetch_volume(w);
+    pthread_mutex_lock(&w->mutex);
+    w->sys_data.vol_initialized = 1;
+    pthread_mutex_unlock(&w->mutex);
+    g_idle_add(update_widgets_idle, w);
+
     while (1) {
-        fetch_system_metrics(w);
-        fetch_volume(w);
-        fetch_battery(w);
-        g_idle_add(update_widgets_idle, w);
-        sleep(1);
+        FILE *fp = popen("stdbuf -oL pactl subscribe 2>/dev/null", "r");
+        if (!fp) {
+            sleep(5);
+            continue;
+        }
+
+        char buf[256];
+        while (fgets(buf, sizeof(buf), fp)) {
+            if (strstr(buf, "change") && strstr(buf, "on sink #")) {
+                pthread_mutex_lock(&w->mutex);
+                float old_vol = w->sys_data.vol;
+                int old_muted = w->sys_data.vol_muted;
+                int old_initialized = w->sys_data.vol_initialized;
+                pthread_mutex_unlock(&w->mutex);
+
+                fetch_volume(w);
+                g_idle_add(update_widgets_idle, w);
+
+                pthread_mutex_lock(&w->mutex);
+                float new_vol = w->sys_data.vol;
+                int new_muted = w->sys_data.vol_muted;
+                int changed = (!old_initialized || old_vol != new_vol || old_muted != new_muted);
+                w->sys_data.vol_initialized = 1;
+                pthread_mutex_unlock(&w->mutex);
+
+                if (changed && old_initialized) {
+                    /* Trigger volume popup on each bar window */
+                    pthread_mutex_lock(&w->mutex);
+                    for (GList *l = w->bar_windows; l != NULL; l = l->next)
+                        g_idle_add(trigger_volume_popup_idle, l->data);
+                    pthread_mutex_unlock(&w->mutex);
+                }
+            }
+        }
+        pclose(fp);
+        sleep(2);
     }
     return NULL;
 }
+
+void *metrics_thread_func(void *data) {
+    AppState *w = (AppState *)data;
+    int count = 0;
+    while (1) {
+        fetch_system_metrics(w);
+        if (count % 5 == 0) {
+            fetch_battery(w);
+            fetch_wifi(w);
+            fetch_bluetooth(w);
+        }
+        g_idle_add(update_widgets_idle, w);
+        sleep(1);
+        count++;
+    }
+    return NULL;
+}
+

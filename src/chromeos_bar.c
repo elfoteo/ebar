@@ -106,7 +106,9 @@ static void on_bar_window_destroy(GtkWidget *widget, gpointer data) {
 	if (ctx->bw->menu_window) {
 		gtk_widget_destroy(ctx->bw->menu_window);
 	}
-	g_free(ctx->bw);
+	if (ctx->bw->popup_window) {
+		gtk_widget_destroy(ctx->bw->popup_window);
+	}	g_free(ctx->bw);
 	g_free(ctx);
 }
 
@@ -132,6 +134,7 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 	BarWindow *bw = g_new0(BarWindow, 1);
 	bw->window = win;
 	bw->monitor = monitor;
+	bw->state = state;
 	GdkRectangle geom;
 	gdk_monitor_get_geometry(monitor, &geom);
 	bw->has_fullscreen = check_fullscreen_on_monitor(geom.x, geom.y);
@@ -228,7 +231,6 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 	dctx->state = state;
 	g_signal_connect(win, "destroy", G_CALLBACK(on_bar_window_destroy), dctx);
 
-	apply_chromeos_css(state);
 	setup_chromeos_menu_toggle(bw, state);
 	gtk_widget_show_all(win);
 }

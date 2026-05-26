@@ -114,7 +114,12 @@ typedef struct {
     double gpu_val, gpu_temp_val;
     float ram_total, ram_avail;
     float vol;
+    float visual_volume;
     int vol_muted;
+    int vol_initialized;
+    float brightness;
+    float visual_brightness;
+    int brightness_initialized;
     int is_playing;
     char media_title[256];
     char media_artist[256];
@@ -126,6 +131,15 @@ typedef struct {
     int  bat_percent;
     int  bat_charging;
     char bat_time_remaining[64];
+    int  wifi_enabled;      /* 0 = off, 1 = on */
+    int  wifi_connected;    /* 0 = disconnected, 1 = connected */
+    char wifi_ssid[64];     /* Current SSID if connected */
+    int  wifi_adapter_exists; /* 0 = no, 1 = yes */
+    int  wifi_strength;     /* 0-100, -1 if unavailable */
+    int  bluetooth_adapter_exists;
+    int  bluetooth_powered;
+    int  bluetooth_connected;
+    char bluetooth_device[64];
 } SystemData;
 
 typedef struct {
@@ -139,6 +153,8 @@ typedef struct {
     GtkWidget *metrics_widgets[6];
     GtkWidget *volume_btn;
     GtkWidget *volume_ring;
+    GtkWidget *brightness_btn;
+    GtkWidget *brightness_ring;
     GtkWidget *nightlight_btn;
     GtkWidget *nightlight_ring;
     GtkWidget *media_play_btn;
@@ -159,10 +175,27 @@ typedef struct {
     GtkWidget *menu_window;
     GtkWidget *cb_menu_kb_label;
     GtkWidget *cb_menu_bat_label;
+    GtkWidget *cb_menu_wifi_pill;
+    GtkWidget *cb_menu_wifi_subtitle;
+    GtkWidget *cb_menu_main_box;
+    GtkWidget *cb_menu_brightness_slider;
 
-} BarWindow;
+#define POPUP_TYPE_BRIGHTNESS 0
+#define POPUP_TYPE_VOLUME     1
+#define POPUP_COUNT           2
 
-typedef struct {
+    /* Passive popups */
+    GtkWidget *popup_window;
+    GtkWidget *popup_slider_box[POPUP_COUNT];
+    GtkWidget *popup_slider_range[POPUP_COUNT];
+    guint popup_timer[POPUP_COUNT];
+    double popup_opacity;
+    guint popup_fade_timer;
+    int popup_hovered;
+    struct AppState *state; /* Backpointer for convenience */
+    } BarWindow;
+
+typedef struct AppState {
     int active_workspace;
     int ws_win_count[MAX_WORKSPACES + 1];
     pthread_mutex_t mutex;
@@ -173,6 +206,7 @@ typedef struct {
     time_t last_manual_vol_update;
     Config config;
     int has_fullscreen;  /* 1 when a fullscreen window is active */
+    guint anim_timer_id;
 } AppState;
 
 #endif

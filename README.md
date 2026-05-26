@@ -49,6 +49,7 @@ sudo pacman -S noto-fonts ttf-jetbrains-mono-nerd
 - `brightnessctl`: Backlight control.
 - `playerctl`: Media metadata and controls.
 - `nvidia-smi`: Optional, for GPU metrics.
+- BlueZ/`bluetoothd`: Optional, for Bluetooth quick settings.
 
 ### Optional (nightlight widget)
 - **`hyprsunset`**: Must be installed and running. Add to your `hyprland.conf`:

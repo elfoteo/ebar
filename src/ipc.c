@@ -1,6 +1,8 @@
 #include "ipc.h"
 #include "bar.h"
 #include "chromeos_menu.h"
+#include "chromeos_popup.h"
+#include "widgets.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,9 +11,11 @@
 #include <sys/un.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <glob.h>
 
 extern void update_workspace_display(AppState *w);
 extern gboolean update_widgets_idle(gpointer data);
+extern void fetch_brightness(AppState *w);
 
 char *hyprctl_request(const char *cmd);
 int check_fullscreen_on_monitor_with_data(int x, int y, const char *monitors, const char *clients);
@@ -288,6 +292,12 @@ void sync_initial_state(AppState *w) {
 
     /* Initial keyboard layout (no popen needed beyond here) */
     fetch_layout_into(w);
+
+    extern void fetch_brightness(AppState *w);
+    fetch_brightness(w);
+    pthread_mutex_lock(&w->mutex);
+    w->sys_data.brightness_initialized = 1;
+    pthread_mutex_unlock(&w->mutex);
 }
 
 /* ── IPC event dispatcher ──────────────────────────────────────────────────── */
@@ -367,58 +377,140 @@ static void handle_ipc_line(AppState *w, char *line) {
         pthread_mutex_unlock(&w->mutex);
         g_idle_add(fullscreen_css_idle, w);
         g_idle_add(close_menus_idle, w);
+    } else if (strncmp(line, "brightness>>", 12) == 0) {
+        float val = atof(line + 12);
+        pthread_mutex_lock(&w->mutex);
+        float old_bright = w->sys_data.brightness;
+        int old_initialized = w->sys_data.brightness_initialized;
+        int changed = (!old_initialized || old_bright != val);
+        
+        w->sys_data.brightness = val;
+        w->sys_data.brightness_initialized = 1;
+
+        if (changed && old_initialized) {
+            for (GList *l = w->bar_windows; l != NULL; l = l->next) {
+                BarWindow *bw = (BarWindow *)l->data;
+                g_idle_add(trigger_brightness_popup_idle, bw);
+            }
+        }
+        pthread_mutex_unlock(&w->mutex);
+        g_idle_add_full(G_PRIORITY_HIGH_IDLE, (GSourceFunc)update_widgets_idle, w, NULL);
     }
 }
 
-/* ── socket2 listener thread ───────────────────────────────────────────────── */
+#include <poll.h>
+
+static void handle_ipc_line(AppState *w, char *line);
+
 void *ipc_thread_func(void *data) {
     AppState *w = (AppState *)data;
     const char *runtime = getenv("XDG_RUNTIME_DIR"), *his = getenv("HYPRLAND_INSTANCE_SIGNATURE");
     if (!runtime || !his) return NULL;
-    char path[256];
-    snprintf(path, sizeof(path), "%s/hypr/%s/.socket2.sock", runtime, his);
+    char sock_path[256];
+    snprintf(sock_path, sizeof(sock_path), "%s/hypr/%s/.socket2.sock", runtime, his);
+    const char *fifo_path = "/tmp/hypr-events-extras";
+
+    char backlight_path[256] = "";
+    glob_t g;
+    if (glob("/sys/class/backlight/*/actual_brightness", 0, NULL, &g) == 0) {
+        if (g.gl_pathc > 0) strncpy(backlight_path, g.gl_pathv[0], sizeof(backlight_path)-1);
+        globfree(&g);
+    }
 
     while (1) {
-        int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-        if (fd < 0) { sleep(1); continue; }
-        struct sockaddr_un addr;
-        memset(&addr, 0, sizeof(addr));
-        addr.sun_family = AF_UNIX;
-        strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
-        if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) { close(fd); sleep(1); continue; }
+        struct pollfd fds[3];
+        int nfds = 0;
 
-        char buffer[8192];
-        ssize_t n;
-        while ((n = read(fd, buffer, sizeof(buffer) - 1)) > 0) {
-            buffer[n] = '\0';
-            char *saveptr, *line = strtok_r(buffer, "\n", &saveptr);
-            while (line) { handle_ipc_line(w, line); line = strtok_r(NULL, "\n", &saveptr); }
+        int sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        struct sockaddr_un sock_addr;
+        memset(&sock_addr, 0, sizeof(sock_addr));
+        sock_addr.sun_family = AF_UNIX;
+        strncpy(sock_addr.sun_path, sock_path, sizeof(sock_addr.sun_path)-1);
+        if (connect(sock_fd, (struct sockaddr *)&sock_addr, sizeof(sock_addr)) >= 0) {
+            fds[nfds].fd = sock_fd;
+            fds[nfds].events = POLLIN;
+            nfds++;
+        } else {
+            close(sock_fd);
+            sock_fd = -1;
         }
-        close(fd);
-        sleep(1);
+
+        int fifo_fd = open(fifo_path, O_RDWR | O_NONBLOCK);
+        if (fifo_fd >= 0) {
+            fds[nfds].fd = fifo_fd;
+            fds[nfds].events = POLLIN;
+            nfds++;
+        }
+
+        int back_fd = -1;
+        if (backlight_path[0]) {
+            back_fd = open(backlight_path, O_RDONLY);
+            if (back_fd >= 0) {
+                fds[nfds].fd = back_fd;
+                fds[nfds].events = POLLPRI | POLLERR;
+                nfds++;
+            }
+        }
+
+        if (nfds == 0) { usleep(100000); continue; }
+
+        while (1) {
+            int ret = poll(fds, nfds, -1);
+            if (ret <= 0) break;
+
+            for (int i = 0; i < nfds; i++) {
+                if (fds[i].revents & (POLLIN | POLLPRI)) {
+                    if (fds[i].fd == sock_fd || fds[i].fd == fifo_fd) {
+                        char buffer[8192];
+                        ssize_t n = read(fds[i].fd, buffer, sizeof(buffer)-1);
+                        if (n <= 0) { goto reconnect; }
+                        buffer[n] = '\0';
+                        char *saveptr, *line = strtok_r(buffer, "\n", &saveptr);
+                        while (line) {
+                            if (strstr(line, "togglefloating")) g_idle_add_full(G_PRIORITY_HIGH_IDLE, (GSourceFunc)update_widgets_idle, w, NULL);
+                            else handle_ipc_line(w, line);
+                            line = strtok_r(NULL, "\n", &saveptr);
+                        }
+                    } else if (fds[i].fd == back_fd) {
+                        lseek(back_fd, 0, SEEK_SET);
+                        pthread_mutex_lock(&w->mutex);
+                        float old_bright = w->sys_data.brightness;
+                        int old_initialized = w->sys_data.brightness_initialized;
+                        pthread_mutex_unlock(&w->mutex);
+
+                        fetch_brightness(w);
+
+                        pthread_mutex_lock(&w->mutex);
+                        float new_bright = w->sys_data.brightness;
+                        int changed = (!old_initialized || old_bright != new_bright);
+                        w->sys_data.brightness_initialized = 1;
+
+                        if (changed && old_initialized) {
+                            for (GList *l = w->bar_windows; l != NULL; l = l->next) {
+                                BarWindow *bw = (BarWindow *)l->data;
+                                g_idle_add(trigger_brightness_popup_idle, bw);
+                            }
+                        }
+                        pthread_mutex_unlock(&w->mutex);
+                        // No need for g_idle_add update_widgets here, anim_timer_func will catch it
+                        char dummy[64]; (void)read(back_fd, dummy, sizeof(dummy));
+                    }
+                } else if (fds[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                    goto reconnect;
+                }
+            }
+        }
+
+reconnect:
+        if (sock_fd >= 0) close(sock_fd);
+        if (fifo_fd >= 0) close(fifo_fd);
+        if (back_fd >= 0) close(back_fd);
+        usleep(100000); // 100ms
     }
+    return NULL;
 }
 
 void *extra_events_thread_func(void *data) {
-    AppState *w = (AppState *)data;
-    const char *fifo_path = "/tmp/hypr-events-extras";
-
-    while (1) {
-        int fd = open(fifo_path, O_RDONLY);
-        if (fd < 0) {
-            sleep(1);
-            continue;
-        }
-
-        char buffer[1024];
-        ssize_t n;
-        while ((n = read(fd, buffer, sizeof(buffer) - 1)) > 0) {
-            buffer[n] = '\0';
-            if (strstr(buffer, "togglefloating")) {
-                g_idle_add(update_ws_idle, w);
-            }
-        }
-        close(fd);
-    }
-    return NULL;
+    (void)data;
+    return NULL; // Legacy, merged into ipc_thread_func
 }

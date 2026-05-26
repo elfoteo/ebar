@@ -769,7 +769,19 @@ static const char *get_battery_icon(int cap, int charging) {
 	};
 	if (cap < 0)
 		return "󱟩"; /* no battery present */
-	int idx = cap / 10;
+	/* Use a balanced round-to-nearest mapping:
+	 * >= 95 -> idx 9 (100%)
+	 * 85-94 -> idx 8 (90%)
+	 * 75-84 -> idx 7 (80%)
+	 * 65-74 -> idx 6 (70%)
+	 * 55-64 -> idx 5 (60%)
+	 * 45-54 -> idx 4 (50%)
+	 * 35-44 -> idx 3 (40%)
+	 * 25-34 -> idx 2 (30%)
+	 * 15-24 -> idx 1 (20%)
+	 * < 15  -> idx 0 (10%)
+	 */
+	int idx = (cap + 5) / 10 - 1;
 	if (idx >= 10)
 		idx = 9;
 	if (idx < 0)

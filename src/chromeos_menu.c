@@ -299,6 +299,7 @@ void chromeos_menu_apply_css(void) {
 					  "  border-radius: 18px; "
 					  "  min-width: 36px; "
 					  "  min-height: 36px; "
+					  "  padding: 0; "
 					  "  font-size: 18px; "
 					  "  margin-left: 8px; "
 					  "} "

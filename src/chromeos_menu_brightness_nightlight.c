@@ -206,6 +206,7 @@ GtkWidget *create_menu_slider(const char *icon, const char *right_icon, double i
 	if (right_icon) {
 		GtkWidget *right_btn = gtk_button_new_with_label(right_icon);
 		gtk_widget_set_valign(right_btn, GTK_ALIGN_CENTER);
+		gtk_widget_set_halign(right_btn, GTK_ALIGN_CENTER);
 		gtk_widget_set_size_request(right_btn, 36, 36);
 		gtk_style_context_add_class(gtk_widget_get_style_context(right_btn), "cb-menu-slider-btn");
 		if (right_active)

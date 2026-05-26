@@ -222,6 +222,9 @@ static gboolean on_popup_leave(GtkWidget *widget, GdkEventCrossing *event, gpoin
 /* ── Generic popup builder ────────────────────────────────────────────────── */
 
 static void trigger_popup_generic(BarWindow *bw, int type, double val, const char *icon, gboolean muted) {
+	if (!bw || !bw->state || bw->state->config.mode != MODE_CHROMEOS)
+		return;
+
 	/* Only show passive popup if the main menu is NOT open on this monitor */
 	if (bw->menu_window) {
 		if (bw->popup_window) {

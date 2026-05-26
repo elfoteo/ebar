@@ -254,23 +254,30 @@ GtkWidget *widget_volume(BarWindow *bw, AppState *state) {
 
 /* ── Nightlight helpers ─────────────────────────────────────────────────── */
 
-static void nightlight_save_state(int level) {
-	if (level <= 0)
-		return;
+static void nightlight_save_state(int active, int level) {
 	FILE *f = fopen("/tmp/ebar_nightlight", "w");
 	if (f) {
-		fprintf(f, "%d", level);
+		fprintf(f, "%d %d", active, level);
 		fclose(f);
 	}
 }
 
-static int nightlight_load_state() {
+static int nightlight_load_state(int *active) {
 	FILE *f = fopen("/tmp/ebar_nightlight", "r");
-	if (!f)
+	if (!f) {
+		if (active) *active = 0;
 		return 0;
+	}
+	int act = 0;
 	int level = 0;
-	if (fscanf(f, "%d", &level) != 1)
-		level = 0;
+	if (fscanf(f, "%d %d", &act, &level) != 2) {
+		fseek(f, 0, SEEK_SET);
+		if (fscanf(f, "%d", &level) != 1) {
+			level = 0;
+		}
+		act = 0;
+	}
+	if (active) *active = act;
 	fclose(f);
 	return level;
 }
@@ -500,7 +507,9 @@ static gboolean on_nightlight_scroll(GtkWidget *widget, GdkEventScroll *event, g
 	state->sys_data.nightlight_on = (new_level > 0);
 	if (new_level > 0) {
 		state->sys_data.nightlight_last_level = new_level;
-		nightlight_save_state(new_level);
+		nightlight_save_state(1, new_level);
+	} else {
+		nightlight_save_state(0, state->sys_data.nightlight_last_level);
 	}
 	pthread_mutex_unlock(&state->mutex);
 
@@ -522,17 +531,22 @@ static gboolean on_nightlight_click(GtkWidget *widget, GdkEventButton *event, gp
 	if (state->sys_data.nightlight_level > 0) {
 		state->sys_data.nightlight_level = 0;
 		state->sys_data.nightlight_on = 0;
+		int last = state->sys_data.nightlight_last_level;
 		pthread_mutex_unlock(&state->mutex);
+		nightlight_save_state(0, last);
 		nightlight_reset(state);
 	} else {
 		int last = state->sys_data.nightlight_last_level;
-		if (last <= 0)
-			last = nightlight_load_state();
+		if (last <= 0) {
+			int dummy_active = 0;
+			last = nightlight_load_state(&dummy_active);
+		}
 		if (last <= 0)
 			last = 15;
 		state->sys_data.nightlight_level = last;
 		state->sys_data.nightlight_on = 1;
 		pthread_mutex_unlock(&state->mutex);
+		nightlight_save_state(1, last);
 		nightlight_apply(state);
 	}
 	update_widgets_idle(state);
@@ -541,8 +555,10 @@ static gboolean on_nightlight_click(GtkWidget *widget, GdkEventButton *event, gp
 
 GtkWidget *widget_nightlight(BarWindow *bw, AppState *state) {
 	pthread_mutex_lock(&state->mutex);
-	if (state->sys_data.nightlight_last_level <= 0)
-		state->sys_data.nightlight_last_level = nightlight_load_state();
+	if (state->sys_data.nightlight_last_level <= 0) {
+		int dummy_active = 0;
+		state->sys_data.nightlight_last_level = nightlight_load_state(&dummy_active);
+	}
 	pthread_mutex_unlock(&state->mutex);
 
 	GtkWidget *evbox = gtk_event_box_new();
@@ -572,6 +588,26 @@ GtkWidget *widget_nightlight(BarWindow *bw, AppState *state) {
 	gtk_container_add(GTK_CONTAINER(evbox), overlay);
 	return evbox;
 }
+
+void nightlight_init(AppState *state) {
+	int active = 0;
+	int level = nightlight_load_state(&active);
+	if (level <= 0)
+		level = 15;
+
+	pthread_mutex_lock(&state->mutex);
+	state->sys_data.nightlight_last_level = level;
+	state->sys_data.nightlight_on = active;
+	state->sys_data.nightlight_level = active ? level : 0;
+	pthread_mutex_unlock(&state->mutex);
+
+	if (active) {
+		nightlight_apply(state);
+	} else {
+		nightlight_reset(state);
+	}
+}
+
 static void on_launcher_clicked(GtkWidget *widget, gpointer data) {
 	(void)widget;
 	const char *action = (const char *)data;

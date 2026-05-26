@@ -5,24 +5,28 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-static void nightlight_save_state(int level) {
-	if (level <= 0)
-		return;
+static void nightlight_save_state(int active, int level) {
 	FILE *f = fopen("/tmp/ebar_nightlight", "w");
 	if (f) {
-		fprintf(f, "%d", level);
+		fprintf(f, "%d %d", active, level);
 		fclose(f);
 	}
 }
 
-static int nightlight_load_state(void) {
+static int nightlight_load_state(int *active) {
 	FILE *f = fopen("/tmp/ebar_nightlight", "r");
-	if (!f)
+	if (!f) {
+		if (active) *active = 0;
 		return 0;
-
-	int level = 0;
-	if (fscanf(f, "%d", &level) != 1)
-		level = 0;
+	}
+	int act = 0, level = 0;
+	if (fscanf(f, "%d %d", &act, &level) != 2) {
+		fseek(f, 0, SEEK_SET);
+		if (fscanf(f, "%d", &level) != 1)
+			level = 0;
+		act = 0;
+	}
+	if (active) *active = act;
 	fclose(f);
 	return level;
 }
@@ -108,7 +112,9 @@ static void nightlight_set_level(AppState *state, int level) {
 	state->sys_data.nightlight_on = level > 0;
 	if (level > 0) {
 		state->sys_data.nightlight_last_level = level;
-		nightlight_save_state(level);
+		nightlight_save_state(1, level);
+	} else {
+		nightlight_save_state(0, state->sys_data.nightlight_last_level);
 	}
 	pthread_mutex_unlock(&state->mutex);
 
@@ -312,8 +318,10 @@ void chromeos_menu_on_nightlight_clicked(GtkWidget *widget, gpointer data) {
 	if (level > 0) {
 		nightlight_set_level(state, 0);
 	} else {
-		if (last <= 0)
-			last = nightlight_load_state();
+		if (last <= 0) {
+			int dummy_active = 0;
+			last = nightlight_load_state(&dummy_active);
+		}
 		if (last <= 0)
 			last = 15;
 		nightlight_set_level(state, last);

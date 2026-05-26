@@ -72,6 +72,7 @@ int main(int argc, char **argv) {
 		strcpy(state->config.font.family, "Noto Sans");
 	}
 	sync_initial_state(state);
+	nightlight_init(state);
 	apply_global_css(state);
 	state->sys_data.visual_brightness = state->sys_data.brightness;
 	state->sys_data.visual_volume = state->sys_data.vol;

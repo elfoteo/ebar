@@ -265,23 +265,6 @@ static void fetch_battery(AppState *w) {
     pthread_mutex_unlock(&w->mutex);
 }
 
-static void fetch_wifi(AppState *w) {
-    int exists = 0;
-    int enabled = 0;
-    int connected = 0;
-    int strength = -1;
-    char ssid[64] = "";
-    wifi_get_status(&exists, &enabled, &connected, ssid, sizeof(ssid), &strength);
-
-    pthread_mutex_lock(&w->mutex);
-    w->sys_data.wifi_adapter_exists = exists;
-    w->sys_data.wifi_enabled = enabled;
-    w->sys_data.wifi_connected = connected;
-    w->sys_data.wifi_strength = strength;
-    g_strlcpy(w->sys_data.wifi_ssid, ssid, sizeof(w->sys_data.wifi_ssid));
-    pthread_mutex_unlock(&w->mutex);
-}
-
 static void fetch_bluetooth(AppState *w) {
     int exists = 0;
     int powered = 0;
@@ -355,7 +338,6 @@ void *metrics_thread_func(void *data) {
         fetch_system_metrics(w);
         if (count % 5 == 0) {
             fetch_battery(w);
-            fetch_wifi(w);
             fetch_bluetooth(w);
         }
         g_idle_add(update_widgets_idle, w);

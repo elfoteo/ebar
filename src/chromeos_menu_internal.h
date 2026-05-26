@@ -23,7 +23,7 @@ void chromeos_menu_show_wifi_networks(BarWindow *bw, AppState *state);
 void chromeos_menu_show_nightlight(BarWindow *bw, AppState *state);
 void chromeos_menu_show_volume(BarWindow *bw, AppState *state);
 void chromeos_menu_refresh_bluetooth_state(AppState *state);
-void chromeos_menu_refresh_wifi_state(AppState *state);
+void chromeos_menu_refresh_wifi_list_if_open(AppState *state);
 
 void chromeos_menu_clear(BarWindow *bw);
 GtkWidget *chromeos_menu_create_header_back_button(void);
@@ -31,7 +31,7 @@ void chromeos_menu_ellipsize_label(GtkWidget *label, int max_width_chars);
 void chromeos_menu_free_generic_ctx(gpointer data, GClosure *closure);
 
 GtkWidget *chromeos_menu_create_pill(const char *icon, const char *title, const char *subtitle, gboolean active,
-									 GtkWidget **subtitle_out, GCallback on_click, GCallback on_arrow_click,
+									 GtkWidget **subtitle_out, GtkWidget **icon_out, GtkWidget **arrow_out, GCallback on_click, GCallback on_arrow_click,
 									 gpointer user_data);
 GtkWidget *chromeos_menu_create_volume_slider(MenuCtx *ctx);
 GtkWidget *chromeos_menu_create_brightness_nightlight_slider(MenuCtx *ctx);

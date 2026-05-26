@@ -441,6 +441,7 @@ static void show_bluetooth_menu(BarWindow *bw, AppState *state) {
 
 void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 	chromeos_menu_clear(bw);
+	g_object_set_data(G_OBJECT(bw->cb_menu_main_box), "current-view", "main");
 
 	GtkWidget *grid = gtk_grid_new();
 	gtk_style_context_add_class(gtk_widget_get_style_context(grid), "cb-menu-grid");
@@ -453,17 +454,50 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 	ctx->state = state;
 	g_object_set_data_full(G_OBJECT(grid), "menu-ctx", ctx, g_free);
 
-	bw->cb_menu_wifi_pill = chromeos_menu_create_pill("󰤨", "WiFi",
-													  state->sys_data.wifi_connected ? state->sys_data.wifi_ssid : "Disconnected",
-													  state->sys_data.wifi_enabled, &bw->cb_menu_wifi_subtitle,
+	pthread_mutex_lock(&state->mutex);
+	SystemData d = state->sys_data;
+	pthread_mutex_unlock(&state->mutex);
+
+	const char *w_icon = "󰤮"; /* Off / No Adapter */
+	const char *w_subtitle = "Off";
+	int wifi_active = 0;
+	int wifi_pill_sensitive = 1;
+	int wifi_arrow_sensitive = 0;
+
+	if (!d.wifi_adapter_exists) {
+		w_subtitle = "No adapter";
+		wifi_pill_sensitive = 0;
+	} else if (d.wifi_enabled) {
+		wifi_active = 1;
+		wifi_arrow_sensitive = 1;
+		if (d.wifi_connected) {
+			w_icon = get_wifi_icon(d.wifi_strength);
+			w_subtitle = d.wifi_ssid[0] ? d.wifi_ssid : "Connected";
+		} else {
+			w_icon = "󰤯"; /* Disconnected (outline) */
+			w_subtitle = "Disconnected";
+		}
+	}
+
+	bw->cb_menu_wifi_pill = chromeos_menu_create_pill(w_icon, "WiFi", w_subtitle,
+													  wifi_active, &bw->cb_menu_wifi_subtitle, &bw->cb_menu_wifi_icon,
+													  &bw->cb_menu_wifi_arrow,
 													  G_CALLBACK(chromeos_menu_on_wifi_clicked),
 													  G_CALLBACK(chromeos_menu_on_wifi_arrow_clicked), ctx);
+	gtk_widget_set_sensitive(bw->cb_menu_wifi_pill, wifi_pill_sensitive);
+	if (bw->cb_menu_wifi_arrow)
+		gtk_widget_set_sensitive(bw->cb_menu_wifi_arrow, wifi_arrow_sensitive);
+
 	g_signal_connect(bw->cb_menu_wifi_pill, "destroy", G_CALLBACK(gtk_widget_destroyed), &bw->cb_menu_wifi_pill);
+	if (bw->cb_menu_wifi_icon)
+		g_signal_connect(bw->cb_menu_wifi_icon, "destroy", G_CALLBACK(gtk_widget_destroyed), &bw->cb_menu_wifi_icon);
 	if (bw->cb_menu_wifi_subtitle)
 		g_signal_connect(bw->cb_menu_wifi_subtitle, "destroy", G_CALLBACK(gtk_widget_destroyed), &bw->cb_menu_wifi_subtitle);
+	if (bw->cb_menu_wifi_arrow)
+		g_signal_connect(bw->cb_menu_wifi_arrow, "destroy", G_CALLBACK(gtk_widget_destroyed), &bw->cb_menu_wifi_arrow);
 	gtk_grid_attach(GTK_GRID(grid), bw->cb_menu_wifi_pill, 0, 0, 2, 1);
 
-	GtkWidget *screenshot = chromeos_menu_create_pill("󰄀", "Screen capture", NULL, FALSE, NULL, NULL, NULL, NULL);
+	GtkWidget *screenshot = chromeos_menu_create_pill("󰄀", "Screen capture", NULL, FALSE, NULL, NULL, NULL, NULL, NULL, NULL);
 	gtk_grid_attach(GTK_GRID(grid), screenshot, 2, 0, 2, 1);
 
 	pthread_mutex_lock(&state->mutex);
@@ -485,13 +519,13 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 	}
 
 	GtkWidget *bluetooth = chromeos_menu_create_pill("󰂯", "Bluetooth", bluetooth_subtitle,
-													bluetooth_exists && bluetooth_powered, NULL,
+													bluetooth_exists && bluetooth_powered, NULL, NULL, NULL,
 													G_CALLBACK(on_bluetooth_clicked), G_CALLBACK(on_bluetooth_arrow_clicked), ctx);
 	gtk_grid_attach(GTK_GRID(grid), bluetooth, 0, 1, 2, 1);
 
 	GtkWidget *keyboard = chromeos_menu_create_pill("󰌌", "Keyboard",
 													state->sys_data.kb_layout[0] ? state->sys_data.kb_layout : "US", FALSE,
-													&bw->cb_menu_kb_label, G_CALLBACK(on_keyboard_clicked),
+													&bw->cb_menu_kb_label, NULL, NULL, G_CALLBACK(on_keyboard_clicked),
 													G_CALLBACK(on_keyboard_arrow_clicked), ctx);
 	if (bw->cb_menu_kb_label)
 		g_signal_connect(bw->cb_menu_kb_label, "destroy", G_CALLBACK(gtk_widget_destroyed), &bw->cb_menu_kb_label);

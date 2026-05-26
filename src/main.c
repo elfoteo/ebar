@@ -7,6 +7,7 @@
 #include "metrics.h"
 #include "types.h"
 #include "widgets.h"
+#include "wifi.h"
 #include <math.h>
 
 static gboolean anim_timer_func(gpointer data) {
@@ -87,6 +88,7 @@ int main(int argc, char **argv) {
 		apply_chromeos_css(state);
 	}
 
+	wifi_init(state);
 	update_widgets_idle(state);
 	ensure_anim_timer(state);
 
@@ -97,6 +99,8 @@ int main(int argc, char **argv) {
 	pthread_create(&volume_thread, NULL, volume_thread_func, state);
 
 	gtk_main();
+
+	wifi_cleanup(state);
 
 	return 0;
 }

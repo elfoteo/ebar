@@ -59,24 +59,6 @@ static const char *wifi_signal_icon(int strength, gboolean secured) {
 	return open_icons[level];
 }
 
-void chromeos_menu_refresh_wifi_state(AppState *state) {
-	int exists = 0;
-	int enabled = 0;
-	int connected = 0;
-	int strength = -1;
-	char ssid[64] = "";
-
-	wifi_get_status(&exists, &enabled, &connected, ssid, sizeof(ssid), &strength);
-
-	pthread_mutex_lock(&state->mutex);
-	state->sys_data.wifi_adapter_exists = exists;
-	state->sys_data.wifi_enabled = enabled;
-	state->sys_data.wifi_connected = connected;
-	state->sys_data.wifi_strength = strength;
-	g_strlcpy(state->sys_data.wifi_ssid, ssid, sizeof(state->sys_data.wifi_ssid));
-	pthread_mutex_unlock(&state->mutex);
-}
-
 void chromeos_menu_on_wifi_clicked(GtkWidget *widget, gpointer data) {
 	(void)widget;
 	MenuCtx *ctx = (MenuCtx *)data;
@@ -86,7 +68,6 @@ void chromeos_menu_on_wifi_clicked(GtkWidget *widget, gpointer data) {
 	pthread_mutex_unlock(&state->mutex);
 
 	wifi_set_enabled(!enabled);
-	chromeos_menu_refresh_wifi_state(state);
 	chromeos_menu_show_main(ctx->bw, state);
 }
 
@@ -128,8 +109,7 @@ static void show_wifi_password_entry(BarWindow *bw, AppState *state, const char 
 	MenuCtx *ctx = g_new0(MenuCtx, 1);
 	ctx->bw = bw;
 	ctx->state = state;
-	g_signal_connect_data(back_btn, "clicked", G_CALLBACK(on_cancel_wifi_clicked), ctx,
-						  (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
+	g_signal_connect_data(back_btn, "clicked", G_CALLBACK(on_cancel_wifi_clicked), ctx, (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
 	gtk_box_pack_start(GTK_BOX(header), back_btn, FALSE, FALSE, 0);
 
 	GtkWidget *title = gtk_label_new("Connect to WiFi");
@@ -176,8 +156,8 @@ static void show_wifi_password_entry(BarWindow *bw, AppState *state, const char 
 	MenuCtx *ctx2 = g_new0(MenuCtx, 1);
 	ctx2->bw = bw;
 	ctx2->state = state;
-	g_signal_connect_data(cancel_btn, "clicked", G_CALLBACK(on_cancel_wifi_clicked), ctx2,
-						  (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
+	g_signal_connect_data(cancel_btn, "clicked", G_CALLBACK(on_cancel_wifi_clicked), ctx2, (GClosureNotify)chromeos_menu_free_generic_ctx,
+						  0);
 	gtk_box_pack_start(GTK_BOX(actions), cancel_btn, FALSE, FALSE, 0);
 
 	GtkWidget *connect_btn = gtk_button_new_with_label("Connect");
@@ -188,8 +168,7 @@ static void show_wifi_password_entry(BarWindow *bw, AppState *state, const char 
 	conn_ctx->state = state;
 	conn_ctx->ssid = g_strdup(ssid);
 	conn_ctx->password_entry = entry;
-	g_signal_connect_data(connect_btn, "clicked", G_CALLBACK(on_connect_clicked), conn_ctx,
-						  (GClosureNotify)free_wifi_connect_ctx, 0);
+	g_signal_connect_data(connect_btn, "clicked", G_CALLBACK(on_connect_clicked), conn_ctx, (GClosureNotify)free_wifi_connect_ctx, 0);
 	gtk_box_pack_start(GTK_BOX(actions), connect_btn, FALSE, FALSE, 0);
 
 	gtk_box_pack_start(GTK_BOX(content), actions, FALSE, FALSE, 0);
@@ -207,8 +186,28 @@ static void on_wifi_net_clicked(GtkWidget *widget, gpointer data) {
 	}
 }
 
+static gboolean chromeos_menu_show_wifi_networks_idle(BarWindow *bw) {
+	chromeos_menu_show_wifi_networks(bw, bw->state);
+	return G_SOURCE_REMOVE;
+}
+
+void chromeos_menu_refresh_wifi_list_if_open(AppState *state) {
+	pthread_mutex_lock(&state->mutex);
+	for (GList *l = state->bar_windows; l != NULL; l = l->next) {
+		BarWindow *bw = (BarWindow *)l->data;
+		if (bw->cb_menu_main_box) {
+			const char *view = g_object_get_data(G_OBJECT(bw->cb_menu_main_box), "current-view");
+			if (view && strcmp(view, "wifi-networks") == 0) {
+				g_idle_add((GSourceFunc)chromeos_menu_show_wifi_networks_idle, bw);
+			}
+		}
+	}
+	pthread_mutex_unlock(&state->mutex);
+}
+
 void chromeos_menu_show_wifi_networks(BarWindow *bw, AppState *state) {
 	chromeos_menu_clear(bw);
+	g_object_set_data(G_OBJECT(bw->cb_menu_main_box), "current-view", "wifi-networks");
 
 	GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
 	gtk_style_context_add_class(gtk_widget_get_style_context(header), "cb-menu-header");

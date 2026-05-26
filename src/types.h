@@ -176,7 +176,9 @@ typedef struct {
     GtkWidget *cb_menu_kb_label;
     GtkWidget *cb_menu_bat_label;
     GtkWidget *cb_menu_wifi_pill;
+    GtkWidget *cb_menu_wifi_icon;
     GtkWidget *cb_menu_wifi_subtitle;
+    GtkWidget *cb_menu_wifi_arrow;
     GtkWidget *cb_menu_main_box;
     GtkWidget *cb_menu_brightness_slider;
 
@@ -207,6 +209,7 @@ typedef struct AppState {
     Config config;
     int has_fullscreen;  /* 1 when a fullscreen window is active */
     guint anim_timer_id;
+    gpointer nm_client; /* NMClient*, kept as gpointer to avoid header dependency */
 } AppState;
 
 #endif

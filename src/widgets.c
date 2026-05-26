@@ -745,11 +745,11 @@ void update_metric_widget(GtkWidget *widget, MetricType type, SystemData *d, int
 	}
 }
 
-static const char *get_wifi_icon(int q) {
+const char *get_wifi_icon(int q) {
 	if (q < 0)
-		return "󰤮";
+		return "󰤯";
 	if (q == 0)
-		return "󰤟";
+		return "󰤯";
 	if (q < 25)
 		return "󰤟";
 	if (q < 50)
@@ -758,7 +758,6 @@ static const char *get_wifi_icon(int q) {
 		return "󰤥";
 	return "󰤨";
 }
-
 
 static const char *get_battery_icon(int cap, int charging) {
 	/* Index 0 = ≤10%, index 9 = 91-100% */
@@ -810,7 +809,7 @@ gboolean update_widgets_idle(gpointer data) {
 
 	struct tm tmv = *localtime(&now);
 	char tstr[64], dstr[64], cb_dstr[64];
-	
+
 	// Check if time components changed (hour/minute/date)
 	int time_changed = (now / 60 != last_time / 60);
 	last_time = now;
@@ -821,20 +820,25 @@ gboolean update_widgets_idle(gpointer data) {
 		strftime(cb_dstr, sizeof(cb_dstr), "%b %-d", &tmv);
 	}
 
-	int bat_changed = (d.bat_percent != last_d.bat_percent || d.bat_charging != last_d.bat_charging || strcmp(d.bat_time_remaining, last_d.bat_time_remaining) != 0);
-	int wifi_changed = (d.wifi_enabled != last_d.wifi_enabled || d.wifi_connected != last_d.wifi_connected || d.wifi_strength != last_d.wifi_strength || strcmp(d.wifi_ssid, last_d.wifi_ssid) != 0 || d.wifi_adapter_exists != last_d.wifi_adapter_exists);
+	int bat_changed = (d.bat_percent != last_d.bat_percent || d.bat_charging != last_d.bat_charging ||
+					   strcmp(d.bat_time_remaining, last_d.bat_time_remaining) != 0);
+	int wifi_changed =
+		(d.wifi_enabled != last_d.wifi_enabled || d.wifi_connected != last_d.wifi_connected || d.wifi_strength != last_d.wifi_strength ||
+		 strcmp(d.wifi_ssid, last_d.wifi_ssid) != 0 || d.wifi_adapter_exists != last_d.wifi_adapter_exists);
 	int kb_changed = (strcmp(d.kb_layout, last_d.kb_layout) != 0);
 
-	int metrics_changed = (d.ram_val != last_d.ram_val || d.cpu_val != last_d.cpu_val || d.disk_val != last_d.disk_val || d.temp_val != last_d.temp_val || d.gpu_val != last_d.gpu_val || d.gpu_temp_val != last_d.gpu_temp_val);
+	int metrics_changed = (d.ram_val != last_d.ram_val || d.cpu_val != last_d.cpu_val || d.disk_val != last_d.disk_val ||
+						   d.temp_val != last_d.temp_val || d.gpu_val != last_d.gpu_val || d.gpu_temp_val != last_d.gpu_temp_val);
 
 	int vol_changed = (d.vol != last_d.vol || d.vol_muted != last_d.vol_muted || d.visual_volume != last_d.visual_volume);
 	int brightness_changed = (d.visual_brightness != last_d.visual_brightness);
 	int nightlight_changed = (d.nightlight_level != last_d.nightlight_level || d.nightlight_error != last_d.nightlight_error);
-	int media_changed = (d.is_playing != last_d.is_playing || strcmp(d.media_title, last_d.media_title) != 0 || strcmp(d.media_artist, last_d.media_artist) != 0);
+	int media_changed = (d.is_playing != last_d.is_playing || strcmp(d.media_title, last_d.media_title) != 0 ||
+						 strcmp(d.media_artist, last_d.media_artist) != 0);
 
 	for (GList *l = w->bar_windows; l != NULL; l = l->next) {
 		BarWindow *bw = (BarWindow *)l->data;
-		
+
 		if (time_changed) {
 			if (bw->clock_time_label)
 				gtk_label_set_text(GTK_LABEL(bw->clock_time_label), tstr);
@@ -851,9 +855,9 @@ gboolean update_widgets_idle(gpointer data) {
 				const char *b_icon = get_battery_icon(d.bat_percent, d.bat_charging);
 
 				const char *w_icon = "󰤮";
-				if (d.wifi_enabled) {
+				if (d.wifi_enabled && d.wifi_adapter_exists) {
 					if (d.wifi_connected) w_icon = get_wifi_icon(d.wifi_strength);
-					else w_icon = "󰤟";
+					else w_icon = "󰤯";
 				}
 
 				snprintf(sys_buf, sizeof(sys_buf), "%s %s  %s", t_buf, w_icon, b_icon);
@@ -872,7 +876,8 @@ gboolean update_widgets_idle(gpointer data) {
 			if (bw->cb_menu_bat_label && GTK_IS_LABEL(bw->cb_menu_bat_label)) {
 				char bat_buf[128];
 				if (d.bat_percent >= 0) {
-					snprintf(bat_buf, sizeof(bat_buf), "%d%% - %s", d.bat_percent, d.bat_time_remaining[0] ? d.bat_time_remaining : (d.bat_charging ? "Charging" : "Discharging"));
+					snprintf(bat_buf, sizeof(bat_buf), "%d%% - %s", d.bat_percent,
+							 d.bat_time_remaining[0] ? d.bat_time_remaining : (d.bat_charging ? "Charging" : "Discharging"));
 				} else {
 					snprintf(bat_buf, sizeof(bat_buf), "Battery: N/A");
 				}
@@ -881,28 +886,40 @@ gboolean update_widgets_idle(gpointer data) {
 		}
 
 		if (wifi_changed) {
+			const char *w_icon = "󰤮"; /* Off / No Adapter */
+			const char *w_subtitle = "Off";
+			int active = 0;
+			int pill_sensitive = 1;
+			int arrow_sensitive = 0;
+
+			if (!d.wifi_adapter_exists) {
+				w_subtitle = "No adapter";
+				pill_sensitive = 0;
+			} else {
+				if (d.wifi_enabled) {
+					active = 1;
+					arrow_sensitive = 1;
+					if (d.wifi_connected) {
+						w_icon = get_wifi_icon(d.wifi_strength);
+						w_subtitle = d.wifi_ssid[0] ? d.wifi_ssid : "Connected";
+					} else {
+						w_icon = "󰤯"; /* Disconnected (outline) */
+						w_subtitle = "Disconnected";
+					}
+				}
+			}
+
 			if (bw->cb_menu_wifi_pill && GTK_IS_WIDGET(bw->cb_menu_wifi_pill)) {
 				GtkStyleContext *ctx = gtk_widget_get_style_context(bw->cb_menu_wifi_pill);
-				if (d.wifi_enabled) {
-					gtk_style_context_add_class(ctx, "cb-menu-pill-active");
-					if (bw->cb_menu_wifi_subtitle && GTK_IS_LABEL(bw->cb_menu_wifi_subtitle)) {
-						if (d.wifi_connected)
-							gtk_label_set_text(GTK_LABEL(bw->cb_menu_wifi_subtitle), d.wifi_ssid[0] ? d.wifi_ssid : "Connected");
-						else
-							gtk_label_set_text(GTK_LABEL(bw->cb_menu_wifi_subtitle), "Not connected");
-					}
-				} else {
-					gtk_style_context_remove_class(ctx, "cb-menu-pill-active");
-					if (bw->cb_menu_wifi_subtitle && GTK_IS_LABEL(bw->cb_menu_wifi_subtitle))
-						gtk_label_set_text(GTK_LABEL(bw->cb_menu_wifi_subtitle), "Off");
-				}
-				if (!d.wifi_adapter_exists) {
-					gtk_widget_set_sensitive(bw->cb_menu_wifi_pill, FALSE);
-					if (bw->cb_menu_wifi_subtitle && GTK_IS_LABEL(bw->cb_menu_wifi_subtitle))
-						gtk_label_set_text(GTK_LABEL(bw->cb_menu_wifi_subtitle), "No adapter");
-				} else {
-					gtk_widget_set_sensitive(bw->cb_menu_wifi_pill, TRUE);
-				}
+				if (active) gtk_style_context_add_class(ctx, "cb-menu-pill-active");
+				else gtk_style_context_remove_class(ctx, "cb-menu-pill-active");
+
+				gtk_widget_set_sensitive(bw->cb_menu_wifi_pill, pill_sensitive);
+				if (bw->cb_menu_wifi_arrow) gtk_widget_set_sensitive(bw->cb_menu_wifi_arrow, arrow_sensitive);
+				if (bw->cb_menu_wifi_subtitle && GTK_IS_LABEL(bw->cb_menu_wifi_subtitle))
+					gtk_label_set_text(GTK_LABEL(bw->cb_menu_wifi_subtitle), w_subtitle);
+				if (bw->cb_menu_wifi_icon && GTK_IS_LABEL(bw->cb_menu_wifi_icon))
+					gtk_label_set_text(GTK_LABEL(bw->cb_menu_wifi_icon), w_icon);
 			}
 		}
 
@@ -936,7 +953,7 @@ gboolean update_widgets_idle(gpointer data) {
 			}
 			if (bw->volume_ring)
 				gtk_widget_queue_draw(bw->volume_ring);
-			
+
 			if (bw->popup_window && gtk_widget_get_visible(bw->popup_window)) {
 				trigger_volume_popup_idle(bw);
 			}
@@ -945,7 +962,7 @@ gboolean update_widgets_idle(gpointer data) {
 		if (brightness_changed) {
 			if (bw->brightness_ring)
 				gtk_widget_queue_draw(bw->brightness_ring);
-			
+
 			if (bw->popup_window && gtk_widget_get_visible(bw->popup_window)) {
 				trigger_brightness_popup_idle(bw);
 			}
@@ -1014,7 +1031,7 @@ gboolean update_widgets_idle(gpointer data) {
 
 	last_d = d;
 
-	extern void ensure_anim_timer(AppState *state);
+	extern void ensure_anim_timer(AppState * state);
 	ensure_anim_timer(w);
 
 	return G_SOURCE_REMOVE;

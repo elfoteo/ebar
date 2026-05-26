@@ -42,7 +42,7 @@ void chromeos_menu_ellipsize_label(GtkWidget *label, int max_width_chars) {
 }
 
 GtkWidget *chromeos_menu_create_pill(const char *icon, const char *title, const char *subtitle, gboolean active,
-									 GtkWidget **subtitle_out, GCallback on_click, GCallback on_arrow_click,
+									 GtkWidget **subtitle_out, GtkWidget **icon_out, GtkWidget **arrow_out, GCallback on_click, GCallback on_arrow_click,
 									 gpointer user_data) {
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 	gtk_style_context_add_class(gtk_widget_get_style_context(box), "cb-menu-pill");
@@ -56,6 +56,8 @@ GtkWidget *chromeos_menu_create_pill(const char *icon, const char *title, const 
 
 	GtkWidget *inner_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 	GtkWidget *icon_lbl = gtk_label_new(icon);
+	if (icon_out)
+		*icon_out = icon_lbl;
 	gtk_style_context_add_class(gtk_widget_get_style_context(icon_lbl), "icon");
 	gtk_box_pack_start(GTK_BOX(inner_box), icon_lbl, FALSE, FALSE, 0);
 
@@ -83,10 +85,14 @@ GtkWidget *chromeos_menu_create_pill(const char *icon, const char *title, const 
 
 	if (on_arrow_click) {
 		GtkWidget *arrow_btn = gtk_button_new_with_label("");
+		if (arrow_out)
+			*arrow_out = arrow_btn;
 		gtk_style_context_add_class(gtk_widget_get_style_context(arrow_btn), "cb-menu-pill-arrow");
 		g_signal_connect(arrow_btn, "clicked", on_arrow_click, user_data);
 		gtk_box_pack_end(GTK_BOX(box), arrow_btn, FALSE, FALSE, 0);
 	} else {
+		if (arrow_out)
+			*arrow_out = NULL;
 		GtkWidget *arrow = gtk_label_new("");
 		gtk_style_context_add_class(gtk_widget_get_style_context(arrow), "subtitle");
 		gtk_widget_set_margin_end(arrow, 12);
@@ -401,7 +407,6 @@ void chromeos_menu_apply_css(void) {
 static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
 	chromeos_menu_apply_css();
 	chromeos_menu_refresh_bluetooth_state(state);
-	chromeos_menu_refresh_wifi_state(state);
 
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_widget_set_name(win, "ebar-menu-window");

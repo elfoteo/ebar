@@ -176,24 +176,5 @@ app             = firefox:firefox.svg
 app             = alacritty:utilities-terminal
 ```
 
-### Nightlight Widget
-
-| State | Icon | Ring |
-|---|---|---|
-| Off | `` (sun, dim) | Hidden |
-| On | `` (moon, full brightness) | Visible — reflects current level |
-| IPC error | `` (sun, **red**) | — |
-
-**Interaction:**
-- **Left-click**: Toggle on/off. First toggle starts at **15%** of the curve. Turning off resets hyprsunset to identity (`temperature 6500`, `gamma 100`).
-- **Scroll**: Adjusts the nightlight *level* (0–100) by `step` per tick. Both temperature and gamma are derived from the same level value via the curve, so a single scroll adjusts both simultaneously. Smooth-scroll (trackpad) is supported.
-
-**Curve functions** (`curve = ease` recommended):
-
-| Mode | Behaviour |
-|---|---|
-| `ease` | Smoothstep — subtle at low levels, stronger near the top |
-| `linear` | Straight-line interpolation between min and max |
-
 ## License
 MIT

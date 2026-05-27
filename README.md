@@ -11,7 +11,7 @@ A beautiful, modular, and customizable Hyprland bar written in C with GTK3 and L
     - **Normal**: Classic full-width bar.
     - **Floating**: Detached bar with margins and rounded corners.
     - **Island**: Each widget group is wrapped in its own "bubble" with a unique "melting" effect when anchored to the screen edge.
-    - **ChromeOS**: A prototype shelf bar mimicking ChromeOS aesthetics, featuring dynamic app launcher.
+    - **ChromeOS**: A prototype shelf bar mimicking ChromeOS aesthetics closely.
 - **Custom Aesthetics**:
     - Accent color support for metric bars and highlights.
     - Full control over transparency, margins, padding, and spacing.
@@ -56,8 +56,8 @@ sudo pacman -S noto-fonts ttf-jetbrains-mono-nerd
   ```hyprlang
   exec-once = hyprsunset
   ```
-  ebar communicates with it directly via the hyprsunset IPC socket — no `hyprctl` process is spawned.
-  If the socket is unreachable the nightlight icon turns **red** as a visual cue.
+  ebar communicates with it directly via the hyprsunset IPC socket.
+  If the socket is unreachable the nightlight icon turns **red**.
 
 ## Installation and Usage
 
@@ -87,21 +87,17 @@ If you want to add blur to the bar on Hyprland, add the following to your `hyprl
 ```hyprlang
 layerrule = blur on, ignore_alpha 0.01, match:namespace ebar
 ```
-*Note: Make sure your `namespace` in the bar is set to `ebar` (default).*
 
 ### Custom Event Integration
-ebar supports listening to a custom event pipe at `/tmp/hypr-events-extras`. This can be used to trigger immediate bar refreshes for events that Hyprland doesn't broadcast over its standard IPC socket.
-
-A common use case is updating the bar's **fullscreen mode** (where it becomes square to fill the gap) when toggling floating windows. By default, ebar enters fullscreen mode if there is exactly one tiled window on the workspace (ignoring all floating windows).
+ebar supports listening to a custom event pipe at `/tmp/hypr-events-extras`.
+This is used to  trigger immediate bar refreshes for events that Hyprland doesn't broadcast over its standard IPC socket.
 
 To use this, create the pipe and echo events to it:
 ```bash
-# Example script to toggle floating and notify ebar
-FIFO="/tmp/hypr-events-extras"
-if [ ! -p "$FIFO" ]; then mkfifo "$FIFO"; fi
-
+#!/usr/bin/env bash
+SOCK="/tmp/hypr-events-extras.sock"
 hyprctl dispatch togglefloating
-echo togglefloating > "$FIFO"
+echo "togglefloating" | socat - UNIX-CONNECT:"$SOCK"
 ```
 
 ### Example Layout
@@ -129,8 +125,8 @@ size            = 13
 
 [workspaces]
 count           = 10
-icon_empty      = 
-icon_occupied   = 
+icon_empty      =
+icon_occupied   =
 show_empty      = true
 
 [left]

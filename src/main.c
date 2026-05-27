@@ -2,6 +2,7 @@
 #include "chromeos_bar.h"
 #include "chromeos_menu.h"
 #include "config.h"
+#include "extra_events.h"
 #include "ipc.h"
 #include "media.h"
 #include "metrics.h"
@@ -20,7 +21,7 @@ static gboolean anim_timer_func(gpointer data) {
 	float b_current = state->sys_data.visual_brightness;
 	float b_diff = b_target - b_current;
 	if (fabsf(b_diff) > 0.05f) {
-		state->sys_data.visual_brightness += b_diff * 0.15f;
+		state->sys_data.visual_brightness += b_diff * 0.25f;
 		changed = 1;
 	} else if (b_current != b_target) {
 		state->sys_data.visual_brightness = b_target;
@@ -93,11 +94,12 @@ int main(int argc, char **argv) {
 	update_widgets_idle(state);
 	ensure_anim_timer(state);
 
-	pthread_t ipc_thread, metrics_thread, media_thread, volume_thread;
+	pthread_t ipc_thread, metrics_thread, media_thread, volume_thread, extra_events_thread;
 	pthread_create(&ipc_thread, NULL, ipc_thread_func, state);
 	pthread_create(&metrics_thread, NULL, metrics_thread_func, state);
 	pthread_create(&media_thread, NULL, media_thread_func, state);
 	pthread_create(&volume_thread, NULL, volume_thread_func, state);
+	pthread_create(&extra_events_thread, NULL, extra_events_thread_func, state);
 
 	gtk_main();
 

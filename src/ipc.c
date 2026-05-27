@@ -306,7 +306,7 @@ static gboolean close_menus_idle(gpointer data) {
     return G_SOURCE_REMOVE;
 }
 
-static void handle_ipc_line(AppState *w, char *line) {
+void handle_ipc_line(AppState *w, char *line) {
     if (strncmp(line, "workspace>>", 11) == 0) {
         pthread_mutex_lock(&w->mutex);
         w->active_workspace = atoi(line + 11);
@@ -390,17 +390,19 @@ static void handle_ipc_line(AppState *w, char *line) {
         if (changed && old_initialized) {
             for (GList *l = w->bar_windows; l != NULL; l = l->next) {
                 BarWindow *bw = (BarWindow *)l->data;
-                g_idle_add(trigger_brightness_popup_idle, bw);
+                g_idle_add_full(G_PRIORITY_HIGH_IDLE, trigger_brightness_popup_idle, bw, NULL);
             }
         }
         pthread_mutex_unlock(&w->mutex);
+        ensure_anim_timer(w);
         g_idle_add_full(G_PRIORITY_HIGH_IDLE, (GSourceFunc)update_widgets_idle, w, NULL);
     }
 }
 
+#include "bar.h"
 #include <poll.h>
 
-static void handle_ipc_line(AppState *w, char *line);
+void handle_ipc_line(AppState *w, char *line);
 
 void *ipc_thread_func(void *data) {
     AppState *w = (AppState *)data;
@@ -408,109 +410,46 @@ void *ipc_thread_func(void *data) {
     if (!runtime || !his) return NULL;
     char sock_path[256];
     snprintf(sock_path, sizeof(sock_path), "%s/hypr/%s/.socket2.sock", runtime, his);
-    const char *fifo_path = "/tmp/hypr-events-extras";
-
-    char backlight_path[256] = "";
-    glob_t g;
-    if (glob("/sys/class/backlight/*/actual_brightness", 0, NULL, &g) == 0) {
-        if (g.gl_pathc > 0) strncpy(backlight_path, g.gl_pathv[0], sizeof(backlight_path)-1);
-        globfree(&g);
-    }
 
     while (1) {
-        struct pollfd fds[3];
-        int nfds = 0;
-
         int sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
         struct sockaddr_un sock_addr;
         memset(&sock_addr, 0, sizeof(sock_addr));
         sock_addr.sun_family = AF_UNIX;
         strncpy(sock_addr.sun_path, sock_path, sizeof(sock_addr.sun_path)-1);
-        if (connect(sock_fd, (struct sockaddr *)&sock_addr, sizeof(sock_addr)) >= 0) {
-            fds[nfds].fd = sock_fd;
-            fds[nfds].events = POLLIN;
-            nfds++;
-        } else {
+        
+        if (connect(sock_fd, (struct sockaddr *)&sock_addr, sizeof(sock_addr)) < 0) {
             close(sock_fd);
-            sock_fd = -1;
+            usleep(100000);
+            continue;
         }
 
-        int fifo_fd = open(fifo_path, O_RDWR | O_NONBLOCK);
-        if (fifo_fd >= 0) {
-            fds[nfds].fd = fifo_fd;
-            fds[nfds].events = POLLIN;
-            nfds++;
-        }
-
-        int back_fd = -1;
-        if (backlight_path[0]) {
-            back_fd = open(backlight_path, O_RDONLY);
-            if (back_fd >= 0) {
-                fds[nfds].fd = back_fd;
-                fds[nfds].events = POLLPRI | POLLERR;
-                nfds++;
-            }
-        }
-
-        if (nfds == 0) { usleep(100000); continue; }
+        struct pollfd fds[1];
+        fds[0].fd = sock_fd;
+        fds[0].events = POLLIN;
 
         while (1) {
-            int ret = poll(fds, nfds, -1);
+            int ret = poll(fds, 1, -1);
             if (ret <= 0) break;
 
-            for (int i = 0; i < nfds; i++) {
-                if (fds[i].revents & (POLLIN | POLLPRI)) {
-                    if (fds[i].fd == sock_fd || fds[i].fd == fifo_fd) {
-                        char buffer[8192];
-                        ssize_t n = read(fds[i].fd, buffer, sizeof(buffer)-1);
-                        if (n <= 0) { goto reconnect; }
-                        buffer[n] = '\0';
-                        char *saveptr, *line = strtok_r(buffer, "\n", &saveptr);
-                        while (line) {
-                            if (strstr(line, "togglefloating")) g_idle_add_full(G_PRIORITY_HIGH_IDLE, (GSourceFunc)update_widgets_idle, w, NULL);
-                            else handle_ipc_line(w, line);
-                            line = strtok_r(NULL, "\n", &saveptr);
-                        }
-                    } else if (fds[i].fd == back_fd) {
-                        lseek(back_fd, 0, SEEK_SET);
-                        pthread_mutex_lock(&w->mutex);
-                        float old_bright = w->sys_data.brightness;
-                        int old_initialized = w->sys_data.brightness_initialized;
-                        pthread_mutex_unlock(&w->mutex);
-
-                        fetch_brightness(w);
-
-                        pthread_mutex_lock(&w->mutex);
-                        float new_bright = w->sys_data.brightness;
-                        int changed = (!old_initialized || old_bright != new_bright);
-                        w->sys_data.brightness_initialized = 1;
-
-                        if (changed && old_initialized) {
-                            for (GList *l = w->bar_windows; l != NULL; l = l->next) {
-                                BarWindow *bw = (BarWindow *)l->data;
-                                g_idle_add(trigger_brightness_popup_idle, bw);
-                            }
-                        }
-                        pthread_mutex_unlock(&w->mutex);
-                        // No need for g_idle_add update_widgets here, anim_timer_func will catch it
-                        char dummy[64]; (void)read(back_fd, dummy, sizeof(dummy));
-                    }
-                } else if (fds[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-                    goto reconnect;
+            if (fds[0].revents & POLLIN) {
+                char buffer[8192];
+                ssize_t n = read(sock_fd, buffer, sizeof(buffer)-1);
+                if (n <= 0) break;
+                buffer[n] = '\0';
+                char *saveptr, *line = strtok_r(buffer, "\n", &saveptr);
+                while (line) {
+                    if (strstr(line, "togglefloating")) g_idle_add_full(G_PRIORITY_HIGH_IDLE, (GSourceFunc)update_widgets_idle, w, NULL);
+                    else handle_ipc_line(w, line);
+                    line = strtok_r(NULL, "\n", &saveptr);
                 }
+            } else if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                break;
             }
         }
-
-reconnect:
-        if (sock_fd >= 0) close(sock_fd);
-        if (fifo_fd >= 0) close(fifo_fd);
-        if (back_fd >= 0) close(back_fd);
+        close(sock_fd);
         usleep(100000); // 100ms
     }
     return NULL;
 }
 
-void *extra_events_thread_func(void *data) {
-    (void)data;
-    return NULL; // Legacy, merged into ipc_thread_func
-}

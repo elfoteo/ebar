@@ -327,10 +327,23 @@ gboolean trigger_brightness_popup_idle(gpointer data) {
 	AppState *state = bw->state;
 
 	pthread_mutex_lock(&state->mutex);
-	float b = state->sys_data.visual_brightness;
+	float b;
+	/* If already visible, use visual_brightness to follow the animation.
+	 * If just showing up, use the target brightness so it appears immediately at the right spot. */
+	if (bw->popup_window && gtk_widget_get_visible(bw->popup_window) && bw->popup_opacity > 0.5) {
+		b = state->sys_data.visual_brightness;
+	} else {
+		b = state->sys_data.brightness;
+	}
 	pthread_mutex_unlock(&state->mutex);
 
 	trigger_popup_generic(bw, POPUP_TYPE_BRIGHTNESS, b, "󰃟", FALSE);
+	
+	if (bw->popup_window) {
+		gtk_widget_show_now(bw->popup_window);
+		gdk_display_flush(gdk_display_get_default());
+	}
+
 	return G_SOURCE_REMOVE;
 }
 

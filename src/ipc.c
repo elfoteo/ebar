@@ -307,6 +307,11 @@ static gboolean close_menus_idle(gpointer data) {
 }
 
 void handle_ipc_line(AppState *w, char *line) {
+    if (strstr(line, "togglefloating")) {
+        g_idle_add_full(G_PRIORITY_HIGH_IDLE, (GSourceFunc)update_widgets_idle, w, NULL);
+        g_idle_add(fullscreen_css_idle, w);
+        return;
+    }
     if (strncmp(line, "workspace>>", 11) == 0) {
         pthread_mutex_lock(&w->mutex);
         w->active_workspace = atoi(line + 11);
@@ -439,8 +444,7 @@ void *ipc_thread_func(void *data) {
                 buffer[n] = '\0';
                 char *saveptr, *line = strtok_r(buffer, "\n", &saveptr);
                 while (line) {
-                    if (strstr(line, "togglefloating")) g_idle_add_full(G_PRIORITY_HIGH_IDLE, (GSourceFunc)update_widgets_idle, w, NULL);
-                    else handle_ipc_line(w, line);
+                    handle_ipc_line(w, line);
                     line = strtok_r(NULL, "\n", &saveptr);
                 }
             } else if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {

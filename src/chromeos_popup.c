@@ -2,6 +2,7 @@
 #include "chromeos_menu.h"
 #include "chromeos_menu_internal.h"
 #include "gtk-layer-shell.h"
+#include "ipc.h"
 #include <gtk/gtk.h>
 #include <time.h>
 
@@ -243,6 +244,7 @@ static void trigger_popup_generic(BarWindow *bw, int type, double val, const cha
 		chromeos_menu_apply_css();
 
 		GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+		gtk_window_set_title(GTK_WINDOW(win), "ebar-popup");
 		gtk_widget_set_name(win, "ebar-passive-popup-window");
 		gtk_style_context_add_class(gtk_widget_get_style_context(win), "ebar-menu-window");
 
@@ -267,6 +269,12 @@ static void trigger_popup_generic(BarWindow *bw, int type, double val, const cha
 		gtk_window_set_default_size(GTK_WINDOW(win), 284, -1);
 		gtk_widget_set_opacity(win, 0.0);
 		bw->popup_opacity = 0.0;
+
+		/* Hyprland bug bypass: force RGBX to prevent unintended transparency/blur issues */
+		char *res = hyprctl_request("keyword windowrule forcergbx,title:^(ebar-popup)$");
+		if (res) free(res);
+		res = hyprctl_request("keyword layerrule forcergbx,ebar-popup");
+		if (res) free(res);
 
 		GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 		gtk_widget_set_name(box, "menu-bg");

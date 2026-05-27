@@ -408,7 +408,7 @@ void chromeos_menu_apply_css(void) {
 	GtkCssProvider *provider = gtk_css_provider_new();
 	gtk_css_provider_load_from_data(provider, css, -1, NULL);
 	gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(provider),
-											  GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+											  GTK_STYLE_PROVIDER_PRIORITY_USER);
 	g_object_unref(provider);
 }
 
@@ -417,6 +417,7 @@ static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
 	chromeos_menu_refresh_bluetooth_state(state);
 
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+	gtk_window_set_title(GTK_WINDOW(win), "ebar-menu");
 	gtk_widget_set_name(win, "ebar-menu-window");
 	gtk_style_context_add_class(gtk_widget_get_style_context(win), "ebar-menu-window");
 
@@ -445,6 +446,13 @@ static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
 	gtk_layer_set_layer(GTK_WINDOW(win), GTK_LAYER_SHELL_LAYER_TOP);
 	gtk_layer_set_keyboard_mode(GTK_WINDOW(win), GTK_LAYER_SHELL_KEYBOARD_MODE_ON_DEMAND);
 	gtk_layer_set_exclusive_zone(GTK_WINDOW(win), -1);
+
+	/* Hyprland bug bypass: force RGBX to prevent unintended transparency/blur issues */
+	#include "ipc.h"
+	char *res = hyprctl_request("keyword windowrule forcergbx,title:^(ebar-menu)$");
+	if (res) free(res);
+	res = hyprctl_request("keyword layerrule forcergbx,ebar-menu");
+	if (res) free(res);
 
 	gtk_window_set_decorated(GTK_WINDOW(win), FALSE);
 	gtk_window_set_resizable(GTK_WINDOW(win), FALSE);

@@ -135,7 +135,8 @@ void apply_global_css(AppState *state) {
       "  margin: 0px 0px 0px 6px; padding: 0; } ");
     A(".metric-scale { padding: 0; margin: 0; } ");
     A(".metric-scale slider { all: unset; min-width: 0; min-height: 0; opacity: 0; } ");
-    A(".metric-scale trough highlight { background-color: %s; border-radius: 10px; } ",
+    A(".metric-scale trough highlight { background-color: %s; border-radius: 10px; "
+      "  min-height: 3px; margin: 0; padding: 0; } ",
       cfg->colors.accent);
     A(".metric-scale trough { background-color: #4e4e4e; border-radius: 50px; "
       "  min-height: 3px; min-width: 55px; margin: 2px 12px; padding: 0; } ");

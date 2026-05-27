@@ -47,6 +47,7 @@ void apply_chromeos_css(AppState *state) {
 	  "  min-width: 36px; min-height: 36px; padding: 0; font-size: 14px; font-weight: 600; } ");
 	A(".cb-circle:hover { background-color: #616264; } ");
 	A(".cb-circle-icon { font-size: 16px; } ");
+	A(".cb-launcher-btn { font-weight: 900; font-size: 24px; } ");
 
 	A(".cb-app-btn { background: transparent; border-radius: 18px; "
 	  "  min-width: 36px; min-height: 36px; padding: 0; margin: 0; "
@@ -99,7 +100,10 @@ void apply_chromeos_css(AppState *state) {
 
 static void on_bar_window_destroy(GtkWidget *widget, gpointer data) {
 	(void)widget;
-	struct { BarWindow *bw; AppState *state; } *ctx = data;
+	struct {
+		BarWindow *bw;
+		AppState *state;
+	} *ctx = data;
 	pthread_mutex_lock(&ctx->state->mutex);
 	ctx->state->bar_windows = g_list_remove(ctx->state->bar_windows, ctx->bw);
 	pthread_mutex_unlock(&ctx->state->mutex);
@@ -108,7 +112,8 @@ static void on_bar_window_destroy(GtkWidget *widget, gpointer data) {
 	}
 	if (ctx->bw->popup_window) {
 		gtk_widget_destroy(ctx->bw->popup_window);
-	}	g_free(ctx->bw);
+	}
+	g_free(ctx->bw);
 	g_free(ctx);
 }
 
@@ -147,9 +152,10 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 	gtk_widget_set_halign(cb_box, GTK_ALIGN_FILL);
 
 	/* ── Far-left: launcher button ── */
-	GtkWidget *btn_o = gtk_button_new_with_label("○");
+	GtkWidget *btn_o = gtk_button_new_with_label("");
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_o), "cb-circle");
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_o), "cb-circle-icon");
+	gtk_style_context_add_class(gtk_widget_get_style_context(btn_o), "cb-launcher-btn");
 
 	/* ── Left area: desk switcher pill ── */
 	GtkWidget *desk_pill = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
@@ -225,7 +231,10 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 
 	state->bar_windows = g_list_append(state->bar_windows, bw);
 
-	typedef struct { BarWindow *bw; AppState *state; } BarDestroyCtx;
+	typedef struct {
+		BarWindow *bw;
+		AppState *state;
+	} BarDestroyCtx;
 	BarDestroyCtx *dctx = g_new0(BarDestroyCtx, 1);
 	dctx->bw = bw;
 	dctx->state = state;

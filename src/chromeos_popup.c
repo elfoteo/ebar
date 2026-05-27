@@ -18,10 +18,12 @@ static void update_popup_slider_minimum_state(GtkRange *range) {
 
 	if (minimum) {
 		gtk_style_context_add_class(scale_ctx, "cb-menu-slider-minimum");
-		if (icon_ctx) gtk_style_context_add_class(icon_ctx, "cb-menu-slider-icon-minimum");
+		if (icon_ctx)
+			gtk_style_context_add_class(icon_ctx, "cb-menu-slider-icon-minimum");
 	} else {
 		gtk_style_context_remove_class(scale_ctx, "cb-menu-slider-minimum");
-		if (icon_ctx) gtk_style_context_remove_class(icon_ctx, "cb-menu-slider-icon-minimum");
+		if (icon_ctx)
+			gtk_style_context_remove_class(icon_ctx, "cb-menu-slider-icon-minimum");
 	}
 }
 
@@ -40,10 +42,13 @@ static void on_popup_scale_size_allocate(GtkWidget *widget, GdkRectangle *alloca
 	(void)data;
 	GtkRange *range = GTK_RANGE(widget);
 	double old_min = slider_get_visual_min(range);
-	if (allocation->width <= 0) return;
+	if (allocation->width <= 0)
+		return;
 	double visual_min = (SLIDER_VISUAL_MIN_PX * 100.0) / allocation->width;
-	if (visual_min > 99.0) visual_min = 99.0;
-	if ((int)(old_min * 100.0) == (int)(visual_min * 100.0)) return;
+	if (visual_min > 99.0)
+		visual_min = 99.0;
+	if ((int)(old_min * 100.0) == (int)(visual_min * 100.0))
+		return;
 
 	double actual_val = slider_get_actual_value(range);
 	slider_set_visual_min(range, visual_min);
@@ -52,15 +57,15 @@ static void on_popup_scale_size_allocate(GtkWidget *widget, GdkRectangle *alloca
 	slider_set_updating(range, FALSE);
 }
 
-static GtkWidget *create_popup_slider(const char *icon, double initial_val,
-                                       GCallback on_changed, gpointer user_data,
-                                       GtkWidget **scale_out) {
+static GtkWidget *create_popup_slider(const char *icon, double initial_val, GCallback on_changed, gpointer user_data,
+									  GtkWidget **scale_out) {
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 	gtk_style_context_add_class(gtk_widget_get_style_context(box), "cb-menu-slider-box");
 
 	GtkWidget *overlay = gtk_overlay_new();
 	GtkWidget *scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 100, 1);
-	if (scale_out) *scale_out = scale;
+	if (scale_out)
+		*scale_out = scale;
 	gtk_scale_set_draw_value(GTK_SCALE(scale), FALSE);
 	slider_set_visual_min(GTK_RANGE(scale), SLIDER_VISUAL_MIN_FALLBACK);
 	gtk_range_set_value(GTK_RANGE(scale), slider_get_display_value(GTK_RANGE(scale), initial_val));
@@ -126,9 +131,7 @@ static void update_popup_visibility(BarWindow *bw);
 
 static gboolean on_popup_fade_tick(gpointer data) {
 	BarWindow *bw = (BarWindow *)data;
-	gboolean showing = (bw->popup_timer[POPUP_TYPE_BRIGHTNESS] != 0 || 
-	                   bw->popup_timer[POPUP_TYPE_VOLUME] != 0 ||
-	                   bw->popup_hovered);
+	gboolean showing = (bw->popup_timer[POPUP_TYPE_BRIGHTNESS] != 0 || bw->popup_timer[POPUP_TYPE_VOLUME] != 0 || bw->popup_hovered);
 
 	if (showing) {
 		bw->popup_opacity += 0.12;
@@ -153,7 +156,8 @@ static gboolean on_popup_fade_tick(gpointer data) {
 }
 
 static void update_popup_visibility(BarWindow *bw) {
-	if (!bw->popup_window) return;
+	if (!bw->popup_window)
+		return;
 
 	gboolean any_visible = FALSE;
 	for (int i = 0; i < POPUP_COUNT; i++) {
@@ -194,7 +198,8 @@ static gboolean on_volume_popup_timeout(gpointer data) {
 /* ── Enter/leave hover handlers ──────────────────────────────────────────── */
 
 static gboolean on_popup_enter(GtkWidget *widget, GdkEventCrossing *event, gpointer data) {
-	(void)widget; (void)event;
+	(void)widget;
+	(void)event;
 	BarWindow *bw = (BarWindow *)data;
 	bw->popup_hovered = 1;
 	for (int i = 0; i < POPUP_COUNT; i++) {
@@ -208,7 +213,8 @@ static gboolean on_popup_enter(GtkWidget *widget, GdkEventCrossing *event, gpoin
 }
 
 static gboolean on_popup_leave(GtkWidget *widget, GdkEventCrossing *event, gpointer data) {
-	(void)widget; (void)event;
+	(void)widget;
+	(void)event;
 	BarWindow *bw = (BarWindow *)data;
 	bw->popup_hovered = 0;
 	if (gtk_widget_get_visible(bw->popup_slider_box[POPUP_TYPE_BRIGHTNESS]))
@@ -253,9 +259,8 @@ static void trigger_popup_generic(BarWindow *bw, int type, double val, const cha
 		gtk_layer_set_anchor(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
 		gtk_layer_set_anchor(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_RIGHT, TRUE);
 
-		/* 54px from bottom border as requested */
-		gtk_layer_set_margin(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_BOTTOM, 54);
-		gtk_layer_set_margin(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_RIGHT, 20);
+		gtk_layer_set_margin(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_BOTTOM, 6);
+		gtk_layer_set_margin(GTK_WINDOW(win), GTK_LAYER_SHELL_EDGE_RIGHT, 6);
 
 		gtk_window_set_decorated(GTK_WINDOW(win), FALSE);
 		gtk_window_set_resizable(GTK_WINDOW(win), FALSE);
@@ -280,7 +285,7 @@ static void trigger_popup_generic(BarWindow *bw, int type, double val, const cha
 		bw->popup_slider_box[POPUP_TYPE_BRIGHTNESS] = create_popup_slider("󰃟", 0, G_CALLBACK(on_popup_brightness_changed), bw, &b_scale);
 		bw->popup_slider_range[POPUP_TYPE_BRIGHTNESS] = b_scale;
 		gtk_box_pack_start(GTK_BOX(inner), bw->popup_slider_box[POPUP_TYPE_BRIGHTNESS], FALSE, FALSE, 0);
-		
+
 		GtkWidget *v_scale = NULL;
 		bw->popup_slider_box[POPUP_TYPE_VOLUME] = create_popup_slider("󰕾", 0, G_CALLBACK(on_popup_volume_changed), bw, &v_scale);
 		bw->popup_slider_range[POPUP_TYPE_VOLUME] = v_scale;
@@ -313,7 +318,8 @@ static void trigger_popup_generic(BarWindow *bw, int type, double val, const cha
 
 		if (type == POPUP_TYPE_VOLUME) {
 			GtkWidget *icon_lbl = g_object_get_data(G_OBJECT(range), "slider-icon");
-			if (icon_lbl) gtk_label_set_text(GTK_LABEL(icon_lbl), icon);
+			if (icon_lbl)
+				gtk_label_set_text(GTK_LABEL(icon_lbl), icon);
 		}
 	}
 
@@ -338,7 +344,7 @@ gboolean trigger_brightness_popup_idle(gpointer data) {
 	pthread_mutex_unlock(&state->mutex);
 
 	trigger_popup_generic(bw, POPUP_TYPE_BRIGHTNESS, b, "󰃟", FALSE);
-	
+
 	if (bw->popup_window) {
 		gtk_widget_show_now(bw->popup_window);
 		gdk_display_flush(gdk_display_get_default());

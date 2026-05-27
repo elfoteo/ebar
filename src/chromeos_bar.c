@@ -1,4 +1,5 @@
 #include "chromeos_bar.h"
+#include "chromeos_launcher.h"
 #include "chromeos_menu.h"
 #include "gtk-layer-shell.h"
 #include "ipc.h"
@@ -27,6 +28,15 @@ static void on_desk_next(GtkWidget *widget, gpointer data) {
 		free(res);
 }
 
+static void on_launcher_btn_clicked(GtkWidget *widget, gpointer data) {
+	(void)widget;
+	struct {
+		BarWindow *bw;
+		AppState *state;
+	} *ctx = data;
+	toggle_chromeos_launcher(ctx->bw, ctx->state);
+}
+
 void apply_chromeos_css(AppState *state) {
 	char css[16384];
 	int n = 0;
@@ -48,6 +58,7 @@ void apply_chromeos_css(AppState *state) {
 	A(".cb-circle:hover { background-color: #616264; } ");
 	A(".cb-circle-icon { font-size: 16px; } ");
 	A(".cb-launcher-btn { font-weight: 900; font-size: 24px; } ");
+	A(".cb-launcher-btn.active { background-color: %s; } ", state->config.colors.accent);
 
 	A(".cb-app-btn { background: transparent; border-radius: 18px; "
 	  "  min-width: 36px; min-height: 36px; padding: 0; margin: 0; "
@@ -110,6 +121,9 @@ static void on_bar_window_destroy(GtkWidget *widget, gpointer data) {
 	if (ctx->bw->menu_window) {
 		gtk_widget_destroy(ctx->bw->menu_window);
 	}
+	if (ctx->bw->launcher_window) {
+		gtk_widget_destroy(ctx->bw->launcher_window);
+	}
 	if (ctx->bw->popup_window) {
 		gtk_widget_destroy(ctx->bw->popup_window);
 	}
@@ -153,9 +167,19 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 
 	/* ── Far-left: launcher button ── */
 	GtkWidget *btn_o = gtk_button_new_with_label("");
+	bw->cb_launcher_btn = btn_o;
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_o), "cb-circle");
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_o), "cb-circle-icon");
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_o), "cb-launcher-btn");
+
+	typedef struct {
+		BarWindow *bw;
+		AppState *state;
+	} LauncherCtx;
+	LauncherCtx *lctx = g_new0(LauncherCtx, 1);
+	lctx->bw = bw;
+	lctx->state = state;
+	g_signal_connect(btn_o, "clicked", G_CALLBACK(on_launcher_btn_clicked), lctx);
 
 	/* ── Left area: desk switcher pill ── */
 	GtkWidget *desk_pill = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);

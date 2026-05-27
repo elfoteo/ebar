@@ -1,4 +1,5 @@
 #include "chromeos_menu.h"
+#include "chromeos_launcher.h"
 #include "chromeos_menu_internal.h"
 #include "gtk-layer-shell.h"
 #include <gdk/gdkkeysyms.h>
@@ -504,6 +505,7 @@ void toggle_chromeos_menu(BarWindow *bw, AppState *state) {
 	if (now - last_destroy_time < 500)
 		return;
 
+	close_all_chromeos_launchers(state);
 	bw->menu_window = create_chromeos_menu(bw, state);
 	g_signal_connect(bw->menu_window, "destroy", G_CALLBACK(on_menu_destroy), bw);
 

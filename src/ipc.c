@@ -1,5 +1,6 @@
 #include "ipc.h"
 #include "bar.h"
+#include "chromeos_launcher.h"
 #include "chromeos_menu.h"
 #include "chromeos_popup.h"
 #include "widgets.h"
@@ -293,6 +294,8 @@ void sync_initial_state(AppState *w) {
     /* Initial keyboard layout (no popen needed beyond here) */
     fetch_layout_into(w);
 
+    w->app_list = g_app_info_get_all();
+
     extern void fetch_brightness(AppState *w);
     fetch_brightness(w);
     pthread_mutex_lock(&w->mutex);
@@ -303,6 +306,7 @@ void sync_initial_state(AppState *w) {
 /* ── IPC event dispatcher ──────────────────────────────────────────────────── */
 static gboolean close_menus_idle(gpointer data) {
     close_all_chromeos_menus((AppState *)data);
+    close_all_chromeos_launchers((AppState *)data);
     return G_SOURCE_REMOVE;
 }
 

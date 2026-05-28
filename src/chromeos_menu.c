@@ -67,14 +67,14 @@ GtkWidget *chromeos_menu_create_pill(const char *icon, const char *title, const 
 	gtk_widget_set_valign(vbox, GTK_ALIGN_CENTER);
 
 	GtkWidget *title_lbl = gtk_label_new(title);
-	chromeos_menu_ellipsize_label(title_lbl, 16);
+	chromeos_menu_ellipsize_label(title_lbl, 11);
 	gtk_widget_set_halign(title_lbl, GTK_ALIGN_START);
 	gtk_box_pack_start(GTK_BOX(vbox), title_lbl, FALSE, FALSE, 0);
 
 	if (subtitle || subtitle_out) {
 		GtkWidget *sub_lbl = gtk_label_new(subtitle ? subtitle : "");
 		gtk_style_context_add_class(gtk_widget_get_style_context(sub_lbl), "subtitle");
-		chromeos_menu_ellipsize_label(sub_lbl, 18);
+		chromeos_menu_ellipsize_label(sub_lbl, 12);
 		gtk_widget_set_halign(sub_lbl, GTK_ALIGN_START);
 		gtk_box_pack_start(GTK_BOX(vbox), sub_lbl, FALSE, FALSE, 0);
 		if (subtitle_out)

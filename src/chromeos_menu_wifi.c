@@ -231,7 +231,7 @@ void chromeos_menu_show_wifi_networks(BarWindow *bw, AppState *state) {
 
 	GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
 	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-	gtk_widget_set_size_request(scroll, -1, 278);
+	gtk_widget_set_size_request(scroll, -1, 250);
 	gtk_box_pack_start(GTK_BOX(bw->cb_menu_main_box), scroll, TRUE, TRUE, 0);
 
 	GtkWidget *list_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);

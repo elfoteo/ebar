@@ -6,7 +6,8 @@
 #include <time.h>
 
 static long long last_destroy_time = 0;
-static long long menu_opened_time = 0;
+static long long last_menu_opened_time = 0;
+static GtkWidget *last_sys_btn = NULL;
 
 static long long get_time_ms(void) {
 	struct timespec ts;
@@ -133,7 +134,7 @@ static gboolean pointer_is_over_widget(GtkWidget *widget) {
 static gboolean on_focus_out(GtkWidget *widget, GdkEventFocus *event, gpointer data) {
 	(void)event;
 	BarWindow *bw = (BarWindow *)data;
-	if (get_time_ms() - menu_opened_time < 300)
+	if (get_time_ms() - last_menu_opened_time < 500)
 		return TRUE;
 
 	if (pointer_is_over_widget(widget) || (bw && pointer_is_over_widget(bw->window)))
@@ -154,266 +155,279 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer dat
 	return FALSE;
 }
 
-void chromeos_menu_apply_css(void) {
-	const char *css = "* { text-shadow: none; box-shadow: none; } "
-					  ".ebar-menu-window { "
-					  "  background-color: transparent; "
-					  "  background: none; "
-					  "  box-shadow: none; "
-					  "  border: none; "
-					  "  outline: none; "
-					  "} "
-					  "#menu-bg { "
-					  "  background-color: #2b2b2b; "
-					  "  border-radius: 24px; "
-					  "  border: 1px solid rgba(255,255,255,0.1); "
-					  "} "
-					  ".cb-menu { "
-					  "  padding: 16px; "
-					  "} "
-					  ".cb-menu-view { "
-					  "  min-width: 388px; "
-					  "  min-height: 348px; "
-					  "} "
-					  ".cb-menu-pill { "
-					  "  background-color: #3c3c3c; "
-					  "  color: #e8eaed; "
-					  "  border-radius: 16px; "
-					  "  min-height: 52px; "
-					  "} "
-					  ".cb-menu-pill label, .cb-menu-pill .icon { "
-					  "  color: #e8eaed; "
-					  "  text-shadow: none; "
-					  "} "
-					  ".cb-menu-pill:hover { "
-					  "  background-color: #4c4c4c; "
-					  "} "
-					  ".cb-menu-pill-active { "
-					  "  background-color: #cbbef9; "
-					  "} "
-					  ".cb-menu-pill-active label, .cb-menu-pill-active .icon { "
-					  "  color: #202124; "
-					  "  text-shadow: none; "
-					  "} "
-					  ".cb-menu-pill-active:hover { "
-					  "  background-color: #d8cefa; "
-					  "} "
-					  ".cb-menu-pill-main { "
-					  "  padding: 12px; "
-					  "  border-radius: 16px 0 0 16px; "
-					  "  background: none; "
-					  "} "
-					  ".cb-menu-pill-arrow { "
-					  "  padding: 12px; "
-					  "  border-radius: 0 16px 16px 0; "
-					  "  background: none; "
-					  "  border-left: 1px solid rgba(255,255,255,0.1); "
-					  "} "
-					  ".cb-menu-pill label { "
-					  "  font-weight: 600; "
-					  "} "
-					  ".cb-menu-pill .icon { "
-					  "  font-size: 20px; "
-					  "  margin-right: 12px; "
-					  "  font-family: \"JetBrainsMonoNerdFont\"; "
-					  "} "
-					  ".cb-menu-pill .subtitle { "
-					  "  font-size: 11px; "
-					  "  opacity: 0.8; "
-					  "} "
-					  ".cb-menu-grid { "
-					  "  margin-bottom: 12px; "
-					  "} "
-					  ".cb-menu-slider-box { "
-					  "  margin: 3px 0; "
-					  "} "
-					  ".cb-menu-slider-icon { "
-					  "  font-size: 18px; "
-					  "  color: #202124; "
-					  "  font-family: \"JetBrainsMonoNerdFont\"; "
-					  "  margin-left: 22px; "
-					  "} "
-					  ".cb-menu-slider trough { "
-					  "  background-color: transparent; "
-					  "  background-image: linear-gradient(#3c3c3c, #3c3c3c); "
-					  "  background-size: 100% 4px; "
-					  "  background-repeat: no-repeat; "
-					  "  background-position: center; "
-					  "  border-radius: 18px; "
-					  "  min-height: 36px; "
-					  "} "
-					  ".cb-menu-slider highlight { "
-					  "  background-color: #cbbef9; "
-					  "  border-radius: 18px; "
-					  "  min-height: 36px; "
-					  "  min-width: 36px; "
-					  "} "
-					  ".cb-menu-slider-minimum highlight { "
-					  "  background-color: #5f6368; "
-					  "} "
-					  ".cb-menu-slider-muted highlight { "
-					  "  background-color: #5f6368; "
-					  "} "
-					  ".cb-menu-slider-icon-minimum { "
-					  "  color: #ffffff; "
-					  "} "
-					  ".cb-menu-slider slider { "
-					  "  all: unset; "
-					  "} "
-					  ".cb-menu-bottom { "
-					  "  margin-top: 16px; "
-					  "} "
-					  ".cb-menu-power { "
-					  "  background-color: #3c3c3c; "
-					  "  color: #e8eaed; "
-					  "  border-radius: 20px; "
-					  "  padding: 8px 16px; "
-					  "} "
-					  ".cb-menu-power label { "
-					  "  font-family: \"JetBrainsMonoNerdFont\"; "
-					  "  font-size: 24px; "
-					  "} "
-					  ".cb-menu-settings { "
-					  "  background-color: #3c3c3c; "
-					  "  color: #e8eaed; "
-					  "  border-radius: 22px; "
-					  "  min-width: 44px; "
-					  "  min-height: 44px; "
-					  "  padding: 0; "
-					  "} "
-					  ".cb-menu-settings label { "
-					  "  font-family: \"JetBrainsMonoNerdFont\"; "
-					  "  font-size: 22px; "
-					  "} "
-					  ".cb-menu-battery { "
-					  "  color: #e8eaed; "
-					  "  font-size: 13px; "
-					  "} "
-					  ".cb-menu-slider-arrow { "
-					  "  background: none; "
-					  "  color: #e8eaed; "
-					  "  font-size: 16px; "
-					  "  margin-left: 12px; "
-					  "  font-family: \"JetBrainsMonoNerdFont\"; "
-					  "} "
-					  ".cb-menu-slider-arrow label { "
-					  "  font-family: \"JetBrainsMonoNerdFont\"; "
-					  "  font-size: 16px; "
-					  "} "
-					  ".cb-menu-slider-btn { "
-					  "  background-color: #3c3c3c; "
-					  "  color: #e8eaed; "
-					  "  border-radius: 18px; "
-					  "  min-width: 36px; "
-					  "  min-height: 36px; "
-					  "  padding: 0; "
-					  "  font-size: 18px; "
-					  "  margin-left: 8px; "
-					  "} "
-					  ".cb-menu-slider-btn-active { "
-					  "  background-color: #cbbef9; "
-					  "  color: #202124; "
-					  "} "
-					  ".cb-menu-slider-btn label { "
-					  "  font-family: \"JetBrainsMonoNerdFont\"; "
-					  "} "
-					  ".cb-menu-wifi-list-btn { "
-					  "  background: none; "
-					  "  color: #e8eaed; "
-					  "  padding: 6px 10px; "
-					  "  border-radius: 8px; "
-					  "  font-size: 14px; "
-					  "  min-height: 40px; "
-					  "} "
-					  ".cb-menu-wifi-list-btn:hover { "
-					  "  background-color: rgba(255,255,255,0.05); "
-					  "} "
-					  ".cb-menu-wifi-list-btn label { "
-					  "  color: #e8eaed; "
-					  "} "
-					  ".cb-menu-wifi-list-btn .icon { "
-					  "  font-family: \"JetBrainsMonoNerdFont\"; "
-					  "  font-size: 18px; "
-					  "} "
-					  ".cb-menu-wifi-list-btn .subtitle { "
-					  "  font-size: 11px; "
-					  "  opacity: 0.72; "
-					  "} "
-					  ".cb-menu-header { "
-					  "  margin-bottom: 12px; "
-					  "  min-height: 36px; "
-					  "} "
-					  ".cb-menu-header-btn { "
-					  "  background-color: #3c3c3c; "
-					  "  color: #e8eaed; "
-					  "  border-radius: 18px; "
-					  "  min-width: 36px; "
-					  "  min-height: 36px; "
-					  "} "
-					  ".cb-menu-header-btn label { "
-					  "  font-family: \"JetBrainsMonoNerdFont\"; "
-					  "  font-size: 18px; "
-					  "} "
-					  ".cb-menu-header-title { "
-					  "  color: #e8eaed; "
-					  "  font-weight: 600; "
-					  "  font-size: 16px; "
-					  "} "
-					  ".cb-menu-entry { "
-					  "  background-color: #3c3c3c; "
-					  "  color: #e8eaed; "
-					  "  border-radius: 18px; "
-					  "  padding: 8px 12px; "
-					  "  border: 1px solid rgba(255,255,255,0.1); "
-					  "  min-height: 36px; "
-					  "} "
-					  ".cb-menu-password-row { "
-					  "  margin: 8px 0 14px 0; "
-					  "} "
-					  ".cb-menu-icon-btn { "
-					  "  background-color: #3c3c3c; "
-					  "  color: #e8eaed; "
-					  "  border-radius: 18px; "
-					  "  min-width: 36px; "
-					  "  min-height: 36px; "
-					  "  margin-left: 8px; "
-					  "} "
-					  ".cb-menu-icon-btn label { "
-					  "  font-family: \"JetBrainsMonoNerdFont\"; "
-					  "  font-size: 18px; "
-					  "} "
-					  ".cb-menu-dialog-btn { "
-					  "  background-color: #3c3c3c; "
-					  "  color: #e8eaed; "
-					  "  border-radius: 18px; "
-					  "  padding: 0 18px; "
-					  "  min-width: 96px; "
-					  "  min-height: 36px; "
-					  "  font-weight: 600; "
-					  "} "
-					  ".cb-menu-dialog-btn-primary { "
-					  "  background-color: #cbbef9; "
-					  "  color: #202124; "
-					  "} "
-					  ".cb-menu-dialog-btn-primary:hover { "
-					  "  background-color: #d8cefa; "
-					  "} "
-					  ".cb-menu-wifi-ssid { "
-					  "  color: #e8eaed; "
-					  "  font-size: 15px; "
-					  "  font-weight: 600; "
-					  "  margin-bottom: 8px; "
-					  "} ";
+void chromeos_menu_apply_css(AppState *state) {
+	char css[16384];
+	int n = 0;
+
+#define A(...) n += snprintf(css + n, (int)sizeof(css) - n, __VA_ARGS__)
+
+	A("* { text-shadow: none; box-shadow: none; } ");
+	A(".ebar-menu-window { "
+	  "  background-color: transparent; "
+	  "  background: none; "
+	  "  box-shadow: none; "
+	  "  border: none; "
+	  "  outline: none; "
+	  "} ");
+	A("#menu-bg { "
+	  "  background-color: #2b2b2b; "
+	  "  border-radius: 24px; "
+	  "  border: 1px solid rgba(255,255,255,0.1); "
+	  "} ");
+	A(".cb-menu { "
+	  "  padding: 16px; "
+	  "} ");
+	A(".cb-menu-view { "
+	  "  min-width: 388px; "
+	  "  min-height: 348px; "
+	  "} ");
+	A(".cb-menu-pill { "
+	  "  background-color: #3c3c3c; "
+	  "  color: #e8eaed; "
+	  "  border-radius: 16px; "
+	  "  min-height: 52px; "
+	  "} ");
+	A(".cb-menu-pill label, .cb-menu-pill .icon { "
+	  "  color: #e8eaed; "
+	  "  text-shadow: none; "
+	  "} ");
+	A(".cb-menu-pill:hover { "
+	  "  background-color: #4c4c4c; "
+	  "} ");
+	A(".cb-menu-pill-active { "
+	  "  background-color: %s; "
+	  "} ",
+	  state->config.chromeos.accent_color);
+	A(".cb-menu-pill-active label, .cb-menu-pill-active .icon { "
+	  "  color: #202124; "
+	  "  text-shadow: none; "
+	  "} ");
+	A(".cb-menu-pill-active:hover { "
+	  "  background-color: %s; "
+	  "  filter: brightness(1.1); "
+	  "} ",
+	  state->config.chromeos.accent_color);
+	A(".cb-menu-pill-main { "
+	  "  padding: 12px; "
+	  "  border-radius: 16px 0 0 16px; "
+	  "  background: none; "
+	  "} ");
+	A(".cb-menu-pill-arrow { "
+	  "  padding: 12px; "
+	  "  border-radius: 0 16px 16px 0; "
+	  "  background: none; "
+	  "  border-left: 1px solid rgba(255,255,255,0.1); "
+	  "} ");
+	A(".cb-menu-pill label { "
+	  "  font-weight: 600; "
+	  "} ");
+	A(".cb-menu-pill .icon { "
+	  "  font-size: 20px; "
+	  "  margin-right: 12px; "
+	  "  font-family: \"JetBrainsMonoNerdFont\"; "
+	  "} ");
+	A(".cb-menu-pill .subtitle { "
+	  "  font-size: 11px; "
+	  "  opacity: 0.8; "
+	  "} ");
+	A(".cb-menu-grid { "
+	  "  margin-bottom: 12px; "
+	  "} ");
+	A(".cb-menu-slider-box { "
+	  "  margin: 3px 0; "
+	  "} ");
+	A(".cb-menu-slider-icon { "
+	  "  font-size: 18px; "
+	  "  color: #202124; "
+	  "  font-family: \"JetBrainsMonoNerdFont\"; "
+	  "  margin-left: 22px; "
+	  "} ");
+	A(".cb-menu-slider trough { "
+	  "  background-color: transparent; "
+	  "  background-image: linear-gradient(#3c3c3c, #3c3c3c); "
+	  "  background-size: 100%% 4px; "
+	  "  background-repeat: no-repeat; "
+	  "  background-position: center; "
+	  "  border-radius: 18px; "
+	  "  min-height: 36px; "
+	  "} ");
+	A(".cb-menu-slider highlight { "
+	  "  background-color: %s; "
+	  "  border-radius: 18px; "
+	  "  min-height: 36px; "
+	  "} ",
+	  state->config.chromeos.accent_color);
+	A(".cb-menu-slider-minimum highlight { "
+	  "  background-color: #5f6368; "
+	  "} ");
+	A(".cb-menu-slider-muted highlight { "
+	  "  background-color: #5f6368; "
+	  "} ");
+	A(".cb-menu-slider-icon-minimum { "
+	  "  color: #ffffff; "
+	  "} ");
+	A(".cb-menu-slider slider { "
+	  "  all: unset; "
+	  "} ");
+	A(".cb-menu-bottom { "
+	  "  margin-top: 16px; "
+	  "} ");
+	A(".cb-menu-power { "
+	  "  background-color: #3c3c3c; "
+	  "  color: #e8eaed; "
+	  "  border-radius: 20px; "
+	  "  padding: 8px 16px; "
+	  "} ");
+	A(".cb-menu-power label { "
+	  "  font-family: \"JetBrainsMonoNerdFont\"; "
+	  "  font-size: 24px; "
+	  "} ");
+	A(".cb-menu-settings { "
+	  "  background-color: #3c3c3c; "
+	  "  color: #e8eaed; "
+	  "  border-radius: 22px; "
+	  "  min-width: 44px; "
+	  "  min-height: 44px; "
+	  "  padding: 0; "
+	  "} ");
+	A(".cb-menu-settings label { "
+	  "  font-family: \"JetBrainsMonoNerdFont\"; "
+	  "  font-size: 22px; "
+	  "} ");
+	A(".cb-menu-battery { "
+	  "  color: #e8eaed; "
+	  "  font-size: 13px; "
+	  "} ");
+	A(".cb-menu-slider-arrow { "
+	  "  background: none; "
+	  "  color: #e8eaed; "
+	  "  font-size: 16px; "
+	  "  margin-left: 12px; "
+	  "  font-family: \"JetBrainsMonoNerdFont\"; "
+	  "} ");
+	A(".cb-menu-slider-arrow label { "
+	  "  font-family: \"JetBrainsMonoNerdFont\"; "
+	  "  font-size: 16px; "
+	  "} ");
+	A(".cb-menu-slider-btn { "
+	  "  background-color: #3c3c3c; "
+	  "  color: #e8eaed; "
+	  "  border-radius: 18px; "
+	  "  min-width: 36px; "
+	  "  min-height: 36px; "
+	  "  padding: 0; "
+	  "  font-size: 18px; "
+	  "  margin-left: 8px; "
+	  "} ");
+	A(".cb-menu-slider-btn-active { "
+	  "  background-color: %s; "
+	  "  color: #202124; "
+	  "} ",
+	  state->config.chromeos.accent_color);
+	A(".cb-menu-slider-btn label { "
+	  "  font-family: \"JetBrainsMonoNerdFont\"; "
+	  "} ");
+	A(".cb-menu-wifi-list-btn { "
+	  "  background: none; "
+	  "  color: #e8eaed; "
+	  "  padding: 6px 10px; "
+	  "  border-radius: 8px; "
+	  "  font-size: 14px; "
+	  "  min-height: 40px; "
+	  "} ");
+	A(".cb-menu-wifi-list-btn:hover { "
+	  "  background-color: rgba(255,255,255,0.05); "
+	  "} ");
+	A(".cb-menu-wifi-list-btn label { "
+	  "  color: #e8eaed; "
+	  "} ");
+	A(".cb-menu-wifi-list-btn .icon { "
+	  "  font-family: \"JetBrainsMonoNerdFont\"; "
+	  "  font-size: 18px; "
+	  "} ");
+	A(".cb-menu-wifi-list-btn .subtitle { "
+	  "  font-size: 11px; "
+	  "  opacity: 0.72; "
+	  "} ");
+	A(".cb-menu-header { "
+	  "  margin-bottom: 12px; "
+	  "  min-height: 36px; "
+	  "} ");
+	A(".cb-menu-header-btn { "
+	  "  background-color: #3c3c3c; "
+	  "  color: #e8eaed; "
+	  "  border-radius: 18px; "
+	  "  min-width: 36px; "
+	  "  min-height: 36px; "
+	  "} ");
+	A(".cb-menu-header-btn label { "
+	  "  font-family: \"JetBrainsMonoNerdFont\"; "
+	  "  font-size: 18px; "
+	  "} ");
+	A(".cb-menu-header-title { "
+	  "  color: #e8eaed; "
+	  "  font-weight: 600; "
+	  "  font-size: 16px; "
+	  "} ");
+	A(".cb-menu-entry { "
+	  "  background-color: #3c3c3c; "
+	  "  color: #e8eaed; "
+	  "  border-radius: 18px; "
+	  "  padding: 8px 12px; "
+	  "  border: 1px solid rgba(255,255,255,0.1); "
+	  "  min-height: 36px; "
+	  "} ");
+	A(".cb-menu-password-row { "
+	  "  margin: 8px 0 14px 0; "
+	  "} ");
+	A(".cb-menu-icon-btn { "
+	  "  background-color: #3c3c3c; "
+	  "  color: #e8eaed; "
+	  "  border-radius: 18px; "
+	  "  min-width: 36px; "
+	  "  min-height: 36px; "
+	  "  margin-left: 8px; "
+	  "} ");
+	A(".cb-menu-icon-btn label { "
+	  "  font-family: \"JetBrainsMonoNerdFont\"; "
+	  "  font-size: 18px; "
+	  "} ");
+	A(".cb-menu-dialog-btn { "
+	  "  background-color: #3c3c3c; "
+	  "  color: #e8eaed; "
+	  "  border-radius: 18px; "
+	  "  padding: 0 18px; "
+	  "  min-width: 96px; "
+	  "  min-height: 36px; "
+	  "  font-weight: 600; "
+	  "} ");
+	A(".cb-menu-dialog-btn-primary { "
+	  "  background-color: %s; "
+	  "  color: #202124; "
+	  "} ",
+	  state->config.chromeos.accent_color);
+	A(".cb-menu-dialog-btn-primary:hover { "
+	  "  background-color: %s; "
+	  "  filter: brightness(1.1); "
+	  "} ",
+	  state->config.chromeos.accent_color);
+	A(".cb-menu-wifi-ssid { "
+	  "  color: #e8eaed; "
+	  "  font-size: 15px; "
+	  "  font-weight: 600; "
+	  "  margin-bottom: 8px; "
+	  "} ");
+
+#undef A
 
 	GtkCssProvider *provider = gtk_css_provider_new();
 	gtk_css_provider_load_from_data(provider, css, -1, NULL);
-	gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(provider),
-											  GTK_STYLE_PROVIDER_PRIORITY_USER);
+	gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(provider), GTK_STYLE_PROVIDER_PRIORITY_USER);
 	g_object_unref(provider);
 }
 
 static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
-	chromeos_menu_apply_css();
+	chromeos_menu_apply_css(state);
 	chromeos_menu_refresh_bluetooth_state(state);
 
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -447,12 +461,14 @@ static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
 	gtk_layer_set_keyboard_mode(GTK_WINDOW(win), GTK_LAYER_SHELL_KEYBOARD_MODE_ON_DEMAND);
 	gtk_layer_set_exclusive_zone(GTK_WINDOW(win), -1);
 
-	/* Hyprland bug bypass: force RGBX to prevent unintended transparency/blur issues */
-	#include "ipc.h"
+/* Hyprland bug bypass: force RGBX to prevent unintended transparency/blur issues */
+#include "ipc.h"
 	char *res = hyprctl_request("keyword windowrule forcergbx,title:^(ebar-menu)$");
-	if (res) free(res);
+	if (res)
+		free(res);
 	res = hyprctl_request("keyword layerrule forcergbx,ebar-menu");
-	if (res) free(res);
+	if (res)
+		free(res);
 
 	gtk_window_set_decorated(GTK_WINDOW(win), FALSE);
 	gtk_window_set_resizable(GTK_WINDOW(win), FALSE);
@@ -492,6 +508,16 @@ static void on_menu_destroy(GtkWidget *widget, gpointer data) {
 	(void)widget;
 	BarWindow *bw = (BarWindow *)data;
 	bw->menu_window = NULL;
+
+	last_destroy_time = get_time_ms();
+
+	if (bw->cb_sys_label) {
+		GtkWidget *btn = gtk_widget_get_parent(bw->cb_sys_label);
+		if (GTK_IS_BUTTON(btn)) {
+			gtk_style_context_remove_class(gtk_widget_get_style_context(btn), "active");
+		}
+	}
+
 	bw->cb_menu_kb_label = NULL;
 	bw->cb_menu_bat_label = NULL;
 	bw->cb_menu_wifi_pill = NULL;
@@ -503,6 +529,7 @@ static void on_menu_destroy(GtkWidget *widget, gpointer data) {
 
 void toggle_chromeos_menu(BarWindow *bw, AppState *state) {
 	long long now = get_time_ms();
+	GtkWidget *btn = bw->cb_sys_label ? gtk_widget_get_parent(bw->cb_sys_label) : NULL;
 
 	if (bw->menu_window) {
 		last_destroy_time = get_time_ms();
@@ -510,14 +537,19 @@ void toggle_chromeos_menu(BarWindow *bw, AppState *state) {
 		return;
 	}
 
-	if (now - last_destroy_time < 500)
+	if (now - last_destroy_time < 500 && last_sys_btn == btn)
 		return;
 
 	close_all_chromeos_launchers(state);
 	bw->menu_window = create_chromeos_menu(bw, state);
 	g_signal_connect(bw->menu_window, "destroy", G_CALLBACK(on_menu_destroy), bw);
 
-	menu_opened_time = get_time_ms();
+	if (btn && GTK_IS_BUTTON(btn)) {
+		gtk_style_context_add_class(gtk_widget_get_style_context(btn), "active");
+	}
+
+	last_menu_opened_time = get_time_ms();
+	last_sys_btn = btn;
 	gtk_widget_show_all(bw->menu_window);
 	gtk_widget_grab_focus(bw->menu_window);
 }

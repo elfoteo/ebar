@@ -1,4 +1,5 @@
 #include "bluetooth.h"
+#include "chromeos_menu.h"
 #include "chromeos_menu_internal.h"
 #include "ipc.h"
 #include "widgets.h"
@@ -293,6 +294,29 @@ void chromeos_menu_on_back_to_main_clicked(GtkWidget *widget, gpointer data) {
 	chromeos_menu_show_main(ctx->bw, ctx->state);
 }
 
+static gboolean delayed_screenshot(gpointer data) {
+	char *cmd = (char *)data;
+	g_spawn_command_line_async(cmd, NULL);
+	g_free(cmd);
+	return G_SOURCE_REMOVE;
+}
+
+static void on_screenshot_clicked(GtkWidget *widget, gpointer data) {
+	(void)widget;
+	AppState *state = (AppState *)data;
+	char *cmd = g_malloc(512);
+	const char *app = state->config.chromeos.screenshot_app;
+
+	if (app[0] == '~') {
+		snprintf(cmd, 512, "%s%s", getenv("HOME"), app + 1);
+	} else {
+		g_strlcpy(cmd, app, 512);
+	}
+
+	close_all_chromeos_menus(state);
+	g_timeout_add(500, delayed_screenshot, cmd);
+}
+
 void chromeos_menu_refresh_bluetooth_state(AppState *state) {
 	int exists = 0;
 	int powered = 0;
@@ -495,7 +519,8 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 		g_signal_connect(bw->cb_menu_wifi_arrow, "destroy", G_CALLBACK(gtk_widget_destroyed), &bw->cb_menu_wifi_arrow);
 	gtk_grid_attach(GTK_GRID(grid), bw->cb_menu_wifi_pill, 0, 0, 2, 1);
 
-	GtkWidget *screenshot = chromeos_menu_create_pill("󰄀", "Screen capture", NULL, FALSE, NULL, NULL, NULL, NULL, NULL, NULL);
+	GtkWidget *screenshot =
+		chromeos_menu_create_pill("󰄀", "Screen capture", NULL, FALSE, NULL, NULL, NULL, G_CALLBACK(on_screenshot_clicked), NULL, state);
 	gtk_grid_attach(GTK_GRID(grid), screenshot, 2, 0, 2, 1);
 
 	pthread_mutex_lock(&state->mutex);

@@ -49,6 +49,8 @@ void apply_chromeos_css(AppState *state) {
 	A(".cb-pill { background-color: #505153; color: #E8EAED; border-radius: 18px; "
 	  "  padding: 0 8px; font-size: 14px; font-weight: 600; min-height: 36px; } ");
 	A(".cb-pill:hover { background-color: #616264; } ");
+	A(".cb-pill.active { background-color: %s; color: #202124; } ", state->config.chromeos.accent_color);
+	A(".cb-pill.active label { color: #202124; } ");
 	/* Semi-touch: date right corners and sys left corners flatten toward each other */
 	A("#cb-date { border-radius: 18px 6px 6px 18px; } ");
 	A("#cb-sys  { border-radius: 6px 18px 18px 6px; } ");
@@ -58,7 +60,7 @@ void apply_chromeos_css(AppState *state) {
 	A(".cb-circle:hover { background-color: #616264; } ");
 	A(".cb-circle-icon { font-size: 16px; } ");
 	A(".cb-launcher-btn { font-weight: 900; font-size: 24px; } ");
-	A(".cb-launcher-btn.active { background-color: %s; } ", state->config.colors.accent);
+	A(".cb-launcher-btn.active { background-color: %s; } ", state->config.chromeos.accent_color);
 
 	A(".cb-app-btn { background: transparent; border-radius: 18px; "
 	  "  min-width: 36px; min-height: 36px; padding: 0; margin: 0; "

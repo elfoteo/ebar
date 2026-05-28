@@ -91,6 +91,10 @@ void config_save_default(const char *path) {
     fprintf(f, "# Icon path can be absolute or relative to ~/.config/ebar/\n");
     fprintf(f, "app             = firefox:firefox.svg\n\n");
 
+    fprintf(f, "[chromeos]\n");
+    fprintf(f, "accent_color    = #0179d4\n");
+    fprintf(f, "screenshot_app  = ~/coding/c/escreen/launch.sh\n\n");
+
     fclose(f);
 }
 
@@ -117,7 +121,7 @@ void config_load(Config *cfg) {
 
     /* CSS-valid colour strings – inserted verbatim into the CSS stylesheet */
     strcpy(cfg->colors.background,    "rgba(0,0,0,0.2)");
-    strcpy(cfg->colors.accent,         "#D35D6E");
+    strcpy(cfg->colors.accent,         "#0179d4");
     strcpy(cfg->colors.foreground,     "#ffffff");
     strcpy(cfg->colors.dim_foreground, "rgba(255,255,255,0.6)");
     strcpy(cfg->colors.border,         "rgba(255,255,255,0.2)");
@@ -159,6 +163,8 @@ void config_load(Config *cfg) {
     strcpy(cfg->nightlight.curve, "ease");
 
     cfg->launcher.count = 0;
+    strcpy(cfg->chromeos.accent_color, "#0179d4");
+    strcpy(cfg->chromeos.screenshot_app, "~/coding/c/escreen/launch.sh");
 
     /* ── Load from file ── */
     char path[512];
@@ -291,6 +297,9 @@ void config_load(Config *cfg) {
                     cfg->launcher.count++;
                 }
             }
+        } else if (!strcmp(section, "chromeos")) {
+            if      (!strcmp(key, "accent_color")) strcpy(cfg->chromeos.accent_color, val);
+            else if (!strcmp(key, "screenshot_app")) strcpy(cfg->chromeos.screenshot_app, val);
         }
 
     }

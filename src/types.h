@@ -107,6 +107,11 @@ typedef struct {
         LauncherApp apps[MAX_LAUNCHER_APPS];
         int count;
     } launcher;
+
+    struct {
+        char accent_color[32];
+        char screenshot_app[256];
+    } chromeos;
 } Config;
 
 typedef struct {

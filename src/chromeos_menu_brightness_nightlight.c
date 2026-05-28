@@ -1,5 +1,6 @@
 #include "chromeos_menu_internal.h"
 #include "widgets.h"
+#include <math.h>
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -16,7 +17,8 @@ static void nightlight_save_state(int active, int level) {
 static int nightlight_load_state(int *active) {
 	FILE *f = fopen("/tmp/ebar_nightlight", "r");
 	if (!f) {
-		if (active) *active = 0;
+		if (active)
+			*active = 0;
 		return 0;
 	}
 	int act = 0, level = 0;
@@ -26,7 +28,8 @@ static int nightlight_load_state(int *active) {
 			level = 0;
 		act = 0;
 	}
-	if (active) *active = act;
+	if (active)
+		*active = act;
 	fclose(f);
 	return level;
 }
@@ -178,8 +181,8 @@ static void on_slider_size_allocate(GtkWidget *widget, GdkRectangle *allocation,
 }
 
 GtkWidget *create_menu_slider(const char *icon, const char *right_icon, double initial_val, GCallback on_changed,
-									 GCallback on_right_clicked, GCallback on_arrow_clicked, gpointer user_data,
-									 gboolean right_active, GtkWidget **scale_out) {
+							  GCallback on_right_clicked, GCallback on_arrow_clicked, gpointer user_data, gboolean right_active,
+							  GtkWidget **scale_out) {
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 	gtk_style_context_add_class(gtk_widget_get_style_context(box), "cb-menu-slider-box");
 
@@ -350,7 +353,7 @@ GtkWidget *chromeos_menu_create_volume_slider(MenuCtx *ctx) {
 
 	GtkWidget *scale = NULL;
 	GtkWidget *box = create_menu_slider("󰕾", "󰝟", vol, G_CALLBACK(on_vol_scale_changed), G_CALLBACK(on_mute_clicked),
-							  G_CALLBACK(on_volume_arrow_clicked), ctx, muted, &scale);
+										G_CALLBACK(on_volume_arrow_clicked), ctx, muted, &scale);
 	if (ctx->bw)
 		ctx->bw->cb_menu_volume_slider = scale;
 	return box;
@@ -363,9 +366,9 @@ GtkWidget *chromeos_menu_create_brightness_nightlight_slider(MenuCtx *ctx) {
 	pthread_mutex_unlock(&ctx->state->mutex);
 
 	GtkWidget *scale = NULL;
-	GtkWidget *box = create_menu_slider("󰃟", "", bright, G_CALLBACK(on_bright_scale_changed),
-										G_CALLBACK(chromeos_menu_on_nightlight_clicked),
-										G_CALLBACK(chromeos_menu_on_nightlight_arrow_clicked), ctx, nightlight_active, &scale);
+	GtkWidget *box =
+		create_menu_slider("󰃟", "", bright, G_CALLBACK(on_bright_scale_changed), G_CALLBACK(chromeos_menu_on_nightlight_clicked),
+						   G_CALLBACK(chromeos_menu_on_nightlight_arrow_clicked), ctx, nightlight_active, &scale);
 	if (ctx->bw)
 		ctx->bw->cb_menu_brightness_slider = scale;
 	return box;
@@ -405,15 +408,16 @@ void chromeos_menu_show_nightlight(BarWindow *bw, AppState *state) {
 	g_object_set_data_full(G_OBJECT(content), "nightlight-slider-ctx", slider_ctx, g_free);
 
 	GtkWidget *bright_scale = NULL;
-	gtk_box_pack_start(GTK_BOX(content),
-					   create_menu_slider("󰃟", NULL, bright, G_CALLBACK(on_bright_scale_changed), NULL, NULL,
-										  slider_ctx, FALSE, &bright_scale),
-					   FALSE, FALSE, 0);
+	gtk_box_pack_start(
+		GTK_BOX(content),
+		create_menu_slider("󰃟", NULL, bright, G_CALLBACK(on_bright_scale_changed), NULL, NULL, slider_ctx, FALSE, &bright_scale), FALSE,
+		FALSE, 0);
 	bw->cb_menu_brightness_slider = bright_scale;
 
-	gtk_box_pack_start(GTK_BOX(content),
-					   create_menu_slider("󰖔", NULL, level, G_CALLBACK(on_nightlight_scale_changed), NULL, NULL, slider_ctx, FALSE, NULL),
-					   FALSE, FALSE, 0);
+	gtk_box_pack_start(
+		GTK_BOX(content),
+		create_menu_slider("󰖔", NULL, level, G_CALLBACK(on_nightlight_scale_changed), NULL, NULL, slider_ctx, FALSE, NULL), FALSE, FALSE,
+		0);
 
 	gtk_widget_show_all(bw->cb_menu_main_box);
 }
@@ -453,8 +457,8 @@ void chromeos_menu_show_volume(BarWindow *bw, AppState *state) {
 
 	GtkWidget *vol_scale = NULL;
 	gtk_box_pack_start(GTK_BOX(content),
-					   create_menu_slider("󰕾", "󰝟", vol, G_CALLBACK(on_vol_scale_changed), G_CALLBACK(on_mute_clicked),
-										  NULL, slider_ctx, muted, &vol_scale),
+					   create_menu_slider("󰕾", "󰝟", vol, G_CALLBACK(on_vol_scale_changed), G_CALLBACK(on_mute_clicked), NULL,
+										  slider_ctx, muted, &vol_scale),
 					   FALSE, FALSE, 0);
 	bw->cb_menu_volume_slider = vol_scale;
 

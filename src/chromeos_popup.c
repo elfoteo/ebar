@@ -241,7 +241,7 @@ static void trigger_popup_generic(BarWindow *bw, int type, double val, const cha
 	}
 
 	if (!bw->popup_window) {
-		chromeos_menu_apply_css();
+		chromeos_menu_apply_css(bw->state);
 
 		GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 		gtk_window_set_title(GTK_WINDOW(win), "ebar-popup");

@@ -23,6 +23,7 @@ static long long get_time_ms(void) {
 }
 
 static long long launcher_opened_time = 0;
+static long long last_launcher_destroy_time = 0;
 
 static gboolean on_focus_out(GtkWidget *widget, GdkEventFocus *event, gpointer data) {
 	(void)event;
@@ -120,7 +121,7 @@ static void on_search_changed(GtkSearchEntry *entry, gpointer data) {
 	gtk_flow_box_set_filter_func(flowbox, filter_func, (gpointer)text, NULL);
 }
 
-static void apply_launcher_css(void) {
+static void apply_launcher_css(AppState *state) {
 	char css[4096];
 	snprintf(css, sizeof(css),
 			 ".launcher-window { background: none; } "
@@ -137,6 +138,10 @@ static void apply_launcher_css(void) {
 			 "  margin-bottom: 24px; "
 			 "  color: white; "
 			 "  font-size: 16px; "
+			 "  border: 1px solid transparent; "
+			 "} "
+			 ".launcher-search:focus-within { "
+			 "  border: 1px solid %s; "
 			 "} "
 			 ".launcher-search entry { "
 			 "  background: none; "
@@ -169,7 +174,8 @@ static void apply_launcher_css(void) {
 			 ".launcher-scroll { "
 			 "  background: none; "
 			 "  border: none; "
-			 "} ");
+			 "} ",
+			 state->config.chromeos.accent_color);
 
 	GtkCssProvider *provider = gtk_css_provider_new();
 	gtk_css_provider_load_from_data(provider, css, -1, NULL);
@@ -182,13 +188,18 @@ static void on_launcher_destroy(GtkWidget *widget, gpointer data) {
 	(void)widget;
 	BarWindow *bw = (BarWindow *)data;
 	bw->launcher_window = NULL;
+
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	last_launcher_destroy_time = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+
 	if (bw->cb_launcher_btn) {
 		gtk_style_context_remove_class(gtk_widget_get_style_context(bw->cb_launcher_btn), "active");
 	}
 }
 
 static GtkWidget *create_launcher_window(BarWindow *bw, AppState *state) {
-	apply_launcher_css();
+	apply_launcher_css(state);
 
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title(GTK_WINDOW(win), "ebar-launcher");
@@ -266,10 +277,18 @@ static GtkWidget *create_launcher_window(BarWindow *bw, AppState *state) {
 }
 
 void toggle_chromeos_launcher(BarWindow *bw, AppState *state) {
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	long long now = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+
 	if (bw->launcher_window) {
+		last_launcher_destroy_time = now;
 		gtk_widget_destroy(bw->launcher_window);
 		return;
 	}
+
+	if (now - last_launcher_destroy_time < 500)
+		return;
 
 	close_all_chromeos_menus(state);
 
@@ -281,9 +300,14 @@ void toggle_chromeos_launcher(BarWindow *bw, AppState *state) {
 }
 
 void close_all_chromeos_launchers(AppState *state) {
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	long long now = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+
 	for (GList *l = state->bar_windows; l != NULL; l = l->next) {
 		BarWindow *bw = (BarWindow *)l->data;
 		if (bw->launcher_window) {
+			last_launcher_destroy_time = now;
 			gtk_widget_destroy(bw->launcher_window);
 		}
 	}

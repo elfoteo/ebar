@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
 	}
 
 	if (state->config.mode == MODE_CHROMEOS) {
-		chromeos_menu_apply_css();
+		chromeos_menu_apply_css(state);
 		apply_chromeos_css(state);
 	}
 

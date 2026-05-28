@@ -114,7 +114,7 @@ spacing         = 12              # spacing between widgets px
 [colors]
 # Use any valid CSS colour: #RRGGBB, rgba(r,g,b,a), etc.
 background      = rgba(0,0,0,0.2)
-accent          = #D35D6E
+accent          = #0179d4
 foreground      = #ffffff
 dim_foreground  = rgba(255,255,255,0.6)
 ring_color      = rgba(255,255,255,0.9) # colour of circular progress rings (volume + nightlight)
@@ -174,6 +174,10 @@ curve           = ease   # ease (smoothstep) | linear
 # If the path is just an icon name (e.g. firefox), it will use the system theme icon
 app             = firefox:firefox.svg
 app             = alacritty:utilities-terminal
+
+[chromeos]
+accent_color    = #0179d4
+screenshot_app  = ~/coding/c/escreen/launch.sh
 ```
 
 ## License

@@ -163,7 +163,7 @@ static void on_slider_size_allocate(GtkWidget *widget, GdkRectangle *allocation,
 	GtkRange *range = GTK_RANGE(widget);
 	double old_min = slider_get_visual_min(range);
 
-	if (allocation->width <= 0)
+	if (allocation->width < 100)
 		return;
 
 	double visual_min = (SLIDER_VISUAL_MIN_PX * 100.0) / allocation->width;
@@ -192,7 +192,13 @@ GtkWidget *create_menu_slider(const char *icon, const char *right_icon, double i
 	if (scale_out)
 		*scale_out = scale;
 	gtk_scale_set_draw_value(GTK_SCALE(scale), FALSE);
-	slider_set_visual_min(GTK_RANGE(scale), SLIDER_VISUAL_MIN_FALLBACK);
+	double expected_width = MENU_CONTENT_WIDTH;
+	if (right_icon)
+		expected_width -= 44; // 36px button + 8px margin
+	if (on_arrow_clicked)
+		expected_width -= 40; // ~40px for the arrow button + margin
+
+	slider_set_visual_min(GTK_RANGE(scale), (SLIDER_VISUAL_MIN_PX * 100.0) / expected_width);
 	gtk_range_set_value(GTK_RANGE(scale), slider_get_display_value(GTK_RANGE(scale), initial_val));
 	gtk_style_context_add_class(gtk_widget_get_style_context(scale), "cb-menu-slider");
 

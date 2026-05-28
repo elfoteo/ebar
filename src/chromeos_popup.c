@@ -43,7 +43,7 @@ static void on_popup_scale_size_allocate(GtkWidget *widget, GdkRectangle *alloca
 	(void)data;
 	GtkRange *range = GTK_RANGE(widget);
 	double old_min = slider_get_visual_min(range);
-	if (allocation->width <= 0)
+	if (allocation->width < 100)
 		return;
 	double visual_min = (SLIDER_VISUAL_MIN_PX * 100.0) / allocation->width;
 	if (visual_min > 99.0)
@@ -68,7 +68,7 @@ static GtkWidget *create_popup_slider(const char *icon, double initial_val, GCal
 	if (scale_out)
 		*scale_out = scale;
 	gtk_scale_set_draw_value(GTK_SCALE(scale), FALSE);
-	slider_set_visual_min(GTK_RANGE(scale), SLIDER_VISUAL_MIN_FALLBACK);
+	slider_set_visual_min(GTK_RANGE(scale), (SLIDER_VISUAL_MIN_PX * 100.0) / 260.0);
 	gtk_range_set_value(GTK_RANGE(scale), slider_get_display_value(GTK_RANGE(scale), initial_val));
 	gtk_style_context_add_class(gtk_widget_get_style_context(scale), "cb-menu-slider");
 

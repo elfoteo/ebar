@@ -11,7 +11,7 @@ enum {
 	SLIDER_VISUAL_MIN_PX = 36,
 };
 
-#define SLIDER_VISUAL_MIN_FALLBACK 10.0
+#define SLIDER_VISUAL_MIN_FALLBACK 12.0
 
 typedef struct {
 	BarWindow *bw;
@@ -30,14 +30,14 @@ GtkWidget *chromeos_menu_create_header_back_button(void);
 void chromeos_menu_ellipsize_label(GtkWidget *label, int max_width_chars);
 void chromeos_menu_free_generic_ctx(gpointer data, GClosure *closure);
 
-GtkWidget *chromeos_menu_create_pill(const char *icon, const char *title, const char *subtitle, gboolean active,
-									 GtkWidget **subtitle_out, GtkWidget **icon_out, GtkWidget **arrow_out, GCallback on_click, GCallback on_arrow_click,
+GtkWidget *chromeos_menu_create_pill(const char *icon, const char *title, const char *subtitle, gboolean active, GtkWidget **subtitle_out,
+									 GtkWidget **icon_out, GtkWidget **arrow_out, GCallback on_click, GCallback on_arrow_click,
 									 gpointer user_data);
 GtkWidget *chromeos_menu_create_volume_slider(MenuCtx *ctx);
 GtkWidget *chromeos_menu_create_brightness_nightlight_slider(MenuCtx *ctx);
 GtkWidget *create_menu_slider(const char *icon, const char *right_icon, double initial_val, GCallback on_changed,
-									 GCallback on_right_clicked, GCallback on_arrow_clicked, gpointer user_data,
-									 gboolean right_active, GtkWidget **scale_out);
+							  GCallback on_right_clicked, GCallback on_arrow_clicked, gpointer user_data, gboolean right_active,
+							  GtkWidget **scale_out);
 
 void chromeos_menu_on_wifi_clicked(GtkWidget *widget, gpointer data);
 void chromeos_menu_on_wifi_arrow_clicked(GtkWidget *widget, gpointer data);

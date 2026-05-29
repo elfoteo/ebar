@@ -11,7 +11,7 @@ enum {
 	SLIDER_VISUAL_MIN_PX = 36,
 };
 
-#define SLIDER_VISUAL_MIN_FALLBACK 12.0
+#define SLIDER_VISUAL_MIN_FALLBACK 18.0
 
 typedef struct {
 	BarWindow *bw;

@@ -46,7 +46,6 @@ sudo pacman -S noto-fonts ttf-jetbrains-mono-nerd
 
 ### CLI tools (runtime)
 - `pactl`: Volume control.
-- `brightnessctl`: Backlight control.
 - `playerctl`: Media metadata and controls.
 - `nvidia-smi`: Optional, for GPU metrics.
 - BlueZ/`bluetoothd`: Optional, for Bluetooth quick settings.
@@ -67,14 +66,14 @@ sudo pacman -S noto-fonts ttf-jetbrains-mono-nerd
    ```
 2. **Launch**:
    ```bash
-   ./build/ebar
+   ~/coding/c/ebar/launch.sh
    ```
    *Note: On first run, a default config will be generated at `~/.config/ebar/ebar.conf`.*
 
 3. **Hyprland Integration**:
    Add this to your `hyprland.conf`:
    ```hyprlang
-   exec-once = /path/to/ebar/launch.sh
+   exec-once = ~/coding/c/ebar/launch.sh
    ```
 
 ## Configuration
@@ -89,15 +88,18 @@ layerrule = blur on, ignore_alpha 0.01, match:namespace ebar
 ```
 
 ### Custom Event Integration
-ebar supports listening to a custom event pipe at `/tmp/hypr-events-extras`.
-This is used to  trigger immediate bar refreshes for events that Hyprland doesn't broadcast over its standard IPC socket.
+ebar supports listening to custom events via a Unix domain socket at `/tmp/hypr-events-extras.sock`.
+For details on the supported commands, see [PROTOCOL.md](PROTOCOL.md).
 
-To use this, create the pipe and echo events to it:
-```bash
-#!/usr/bin/env bash
-SOCK="/tmp/hypr-events-extras.sock"
-hyprctl dispatch togglefloating
-echo "togglefloating" | socat - UNIX-CONNECT:"$SOCK"
+The `ebar` binary (via its launch script) can be used to send these events and control system state:
+
+```hyprlang
+# Brightness control
+bindl = ,XF86MonBrightnessDown, exec, ~/coding/c/ebar/launch.sh --brightness lower
+bindl = ,XF86MonBrightnessUp, exec, ~/coding/c/ebar/launch.sh --brightness raise
+
+# Toggle floating with bar refresh
+bind = $mainMod, F, exec, ~/coding/c/ebar/launch.sh --togglefloat
 ```
 
 ### Example Layout
@@ -167,6 +169,10 @@ gamma_max       = 100    # full brightness gamma
 gamma_min       = 75     # reduced gamma at maximum nightlight level
 step            = 5      # level change per scroll tick (range 0–100)
 curve           = ease   # ease (smoothstep) | linear
+
+[brightness]
+levels          = 100 82 68 54 42 31 21 12 4 1 0
+transition_ms   = 200    # transition time in milliseconds
 
 [launcher]
 # Format: app = action:icon_path

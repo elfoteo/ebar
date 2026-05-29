@@ -162,6 +162,11 @@ void config_load(Config *cfg) {
     cfg->nightlight.step      = 5;
     strcpy(cfg->nightlight.curve, "ease");
 
+    float def_levels[] = {100, 82, 68, 54, 42, 31, 21, 12, 4, 1, 0};
+    cfg->brightness.count = 11;
+    for (int i = 0; i < 11; i++) cfg->brightness.levels[i] = def_levels[i];
+    cfg->brightness.transition_ms = 200;
+
     cfg->launcher.count = 0;
     strcpy(cfg->chromeos.accent_color, "#0179d4");
     strcpy(cfg->chromeos.screenshot_app, "~/coding/c/escreen/launch.sh");
@@ -280,6 +285,16 @@ void config_load(Config *cfg) {
             else if (!strcmp(key, "gamma_min")) cfg->nightlight.gamma_min = atof(val);
             else if (!strcmp(key, "step"))      cfg->nightlight.step      = atoi(val);
             else if (!strcmp(key, "curve"))     strncpy(cfg->nightlight.curve, val, sizeof(cfg->nightlight.curve)-1);
+        } else if (!strcmp(section, "brightness")) {
+            if (!strcmp(key, "levels")) {
+                char tmp[256]; strncpy(tmp, val, sizeof(tmp)-1); tmp[sizeof(tmp)-1] = '\0';
+                char *sp, *tok = strtok_r(tmp, " ", &sp);
+                cfg->brightness.count = 0;
+                while (tok && cfg->brightness.count < 16) {
+                    cfg->brightness.levels[cfg->brightness.count++] = atof(tok);
+                    tok = strtok_r(NULL, " ", &sp);
+                }
+            } else if (!strcmp(key, "transition_ms")) cfg->brightness.transition_ms = atoi(val);
         } else if (!strcmp(section, "launcher")) {
             if (!strcmp(key, "app") && cfg->launcher.count < MAX_LAUNCHER_APPS) {
                 char *colon = strchr(val, ':');

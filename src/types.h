@@ -104,6 +104,12 @@ typedef struct {
     } nightlight;
 
     struct {
+        float levels[16];
+        int count;
+        int transition_ms;
+    } brightness;
+
+    struct {
         LauncherApp apps[MAX_LAUNCHER_APPS];
         int count;
     } launcher;

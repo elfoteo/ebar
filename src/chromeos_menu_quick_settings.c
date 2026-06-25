@@ -121,6 +121,12 @@ typedef struct {
 	int connected;
 } BluetoothDeviceCtx;
 
+typedef struct {
+	BarWindow *bw;
+	AppState *state;
+	char path[256];
+} BluetoothConnectCtx;
+
 static void free_keyboard_layout_ctx(gpointer data, GClosure *closure) {
 	(void)closure;
 	KeyboardLayoutCtx *ctx = (KeyboardLayoutCtx *)data;
@@ -357,19 +363,40 @@ static void on_bluetooth_arrow_clicked(GtkWidget *widget, gpointer data) {
 	show_bluetooth_menu(ctx->bw, ctx->state);
 }
 
+static void on_bluetooth_connect_finish(const char *path, int success, gpointer user_data) {
+	(void)path;
+	(void)success;
+	BluetoothConnectCtx *ctx = (BluetoothConnectCtx *)user_data;
+	pthread_mutex_lock(&ctx->state->mutex);
+	ctx->state->sys_data.bluetooth_connecting[0] = '\0';
+	pthread_mutex_unlock(&ctx->state->mutex);
+
+	chromeos_menu_refresh_bluetooth_state(ctx->state);
+	show_bluetooth_menu(ctx->bw, ctx->state);
+	g_free(ctx);
+}
+
 static void on_bluetooth_device_clicked(GtkWidget *widget, gpointer data) {
 	(void)widget;
 	BluetoothDeviceCtx *ctx = (BluetoothDeviceCtx *)data;
 	BarWindow *bw = ctx->bw;
 	AppState *state = ctx->state;
 
-	if (ctx->connected)
-		bluetooth_disconnect_device(ctx->path);
-	else
-		bluetooth_connect_device(ctx->path);
+	BluetoothConnectCtx *cb_ctx = g_new0(BluetoothConnectCtx, 1);
+	cb_ctx->bw = bw;
+	cb_ctx->state = state;
+	g_strlcpy(cb_ctx->path, ctx->path, sizeof(cb_ctx->path));
 
-	chromeos_menu_refresh_bluetooth_state(state);
+	pthread_mutex_lock(&state->mutex);
+	g_strlcpy(state->sys_data.bluetooth_connecting, ctx->path, sizeof(state->sys_data.bluetooth_connecting));
+	pthread_mutex_unlock(&state->mutex);
+
 	show_bluetooth_menu(bw, state);
+
+	if (ctx->connected)
+		bluetooth_disconnect_device_async(ctx->path, on_bluetooth_connect_finish, cb_ctx);
+	else
+		bluetooth_connect_device_async(ctx->path, on_bluetooth_connect_finish, cb_ctx);
 }
 
 static void show_bluetooth_menu(BarWindow *bw, AppState *state) {
@@ -398,6 +425,8 @@ static void show_bluetooth_menu(BarWindow *bw, AppState *state) {
 	pthread_mutex_lock(&state->mutex);
 	int exists = state->sys_data.bluetooth_adapter_exists;
 	int powered = state->sys_data.bluetooth_powered;
+	char connecting[256];
+	g_strlcpy(connecting, state->sys_data.bluetooth_connecting, sizeof(connecting));
 	pthread_mutex_unlock(&state->mutex);
 
 	if (!exists || !powered) {
@@ -420,11 +449,12 @@ static void show_bluetooth_menu(BarWindow *bw, AppState *state) {
 
 	for (guint i = 0; i < devices->len; i++) {
 		BluetoothDevice *device = g_ptr_array_index(devices, i);
+		int is_connecting = connecting[0] && strcmp(device->path, connecting) == 0;
 		GtkWidget *btn = gtk_button_new();
 		gtk_style_context_add_class(gtk_widget_get_style_context(btn), "cb-menu-wifi-list-btn");
 
 		GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-		GtkWidget *icon = gtk_label_new("󰂯");
+		GtkWidget *icon = gtk_label_new(device->icon[0] ? device->icon : "󰂯");
 		gtk_style_context_add_class(gtk_widget_get_style_context(icon), "icon");
 		gtk_box_pack_start(GTK_BOX(row), icon, FALSE, FALSE, 0);
 
@@ -434,19 +464,26 @@ static void show_bluetooth_menu(BarWindow *bw, AppState *state) {
 		gtk_widget_set_halign(name, GTK_ALIGN_START);
 		gtk_box_pack_start(GTK_BOX(text), name, FALSE, FALSE, 0);
 
-		GtkWidget *subtitle = gtk_label_new(device->connected ? "Connected" : (device->paired ? "Paired" : "Available"));
+		const char *status;
+		if (is_connecting)
+			status = device->connected ? "Disconnecting…" : "Connecting…";
+		else
+			status = device->connected ? "Connected" : (device->paired ? "Paired" : "Available");
+
+		GtkWidget *subtitle = gtk_label_new(status);
 		gtk_style_context_add_class(gtk_widget_get_style_context(subtitle), "subtitle");
 		gtk_widget_set_halign(subtitle, GTK_ALIGN_START);
 		gtk_box_pack_start(GTK_BOX(text), subtitle, FALSE, FALSE, 0);
 		gtk_box_pack_start(GTK_BOX(row), text, TRUE, TRUE, 0);
 
-		if (device->connected) {
+		if (device->connected && !is_connecting) {
 			GtkWidget *check = gtk_label_new("󰄬");
 			gtk_style_context_add_class(gtk_widget_get_style_context(check), "icon");
 			gtk_box_pack_end(GTK_BOX(row), check, FALSE, FALSE, 0);
 		}
 
 		gtk_container_add(GTK_CONTAINER(btn), row);
+		gtk_widget_set_sensitive(btn, !is_connecting);
 
 		BluetoothDeviceCtx *device_ctx = g_new0(BluetoothDeviceCtx, 1);
 		device_ctx->bw = bw;

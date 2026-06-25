@@ -151,6 +151,7 @@ typedef struct {
     int  bluetooth_powered;
     int  bluetooth_connected;
     char bluetooth_device[64];
+    char bluetooth_connecting[256];
 } SystemData;
 
 typedef struct {

@@ -3,7 +3,6 @@
 #include "chromeos_menu_internal.h"
 #include "gtk-layer-shell.h"
 #include <gdk/gdkkeysyms.h>
-#include <math.h>
 #include <time.h>
 
 static long long last_destroy_time = 0;
@@ -646,32 +645,6 @@ static void on_slider_value_changed(GtkRange *range, gpointer data) {
 	update_slider_minimum_state(range);
 }
 
-static void on_slider_size_allocate(GtkWidget *widget, GdkRectangle *allocation, gpointer data) {
-	(void)data;
-	GtkRange *range = GTK_RANGE(widget);
-	double old_min = slider_get_visual_min(range);
-
-	/* Ignore small or intermediate allocations to prevent jumps.
-	 * The slider should be at least ~50% of the menu width to be considered 'real'. */
-	if (allocation->width < MENU_CONTENT_WIDTH / 2)
-		return;
-
-	double visual_min = (SLIDER_VISUAL_MIN_PX * 100.0) / allocation->width;
-	if (visual_min > 99.0)
-		visual_min = 99.0;
-
-	/* Only act if the difference is significant (> 0.1%) */
-	if (fabs(old_min - visual_min) < 0.1)
-		return;
-
-	double actual_val = slider_get_actual_value(range);
-	slider_set_visual_min(range, visual_min);
-	slider_set_updating(range, TRUE);
-	gtk_range_set_value(range, slider_get_display_value(range, actual_val));
-	slider_set_updating(range, FALSE);
-	update_slider_minimum_state(range);
-}
-
 GtkWidget *create_menu_slider(const char *icon, const char *right_icon, double initial_val, GCallback on_changed,
 							  GCallback on_right_clicked, GCallback on_arrow_clicked, gpointer user_data, gboolean right_active,
 							  GtkWidget **scale_out) {
@@ -685,12 +658,12 @@ GtkWidget *create_menu_slider(const char *icon, const char *right_icon, double i
 		*scale_out = scale;
 	gtk_scale_set_draw_value(GTK_SCALE(scale), FALSE);
 
-	/* Calculate an accurate initial visual_min based on the expected final width */
+	/* Calculate visual_min based on the expected final width */
 	double expected_width = MENU_CONTENT_WIDTH;
 	if (right_icon)
-		expected_width -= 44; // 36px button + 8px margin
+		expected_width -= 44;
 	if (on_arrow_clicked)
-		expected_width -= 40; // ~40px for the arrow button + margin
+		expected_width -= 32;
 
 	double initial_visual_min = (SLIDER_VISUAL_MIN_PX * 100.0) / expected_width;
 	slider_set_visual_min(GTK_RANGE(scale), initial_visual_min);
@@ -703,7 +676,6 @@ GtkWidget *create_menu_slider(const char *icon, const char *right_icon, double i
 	gtk_widget_set_valign(icon_lbl, GTK_ALIGN_CENTER);
 	g_object_set_data(G_OBJECT(scale), "slider-icon", icon_lbl);
 	g_signal_connect(scale, "value-changed", G_CALLBACK(on_slider_value_changed), NULL);
-	g_signal_connect(scale, "size-allocate", G_CALLBACK(on_slider_size_allocate), NULL);
 	if (on_changed)
 		g_signal_connect(scale, "value-changed", on_changed, user_data);
 	update_slider_minimum_state(GTK_RANGE(scale));

@@ -399,6 +399,14 @@ static void on_bluetooth_device_clicked(GtkWidget *widget, gpointer data) {
 		bluetooth_connect_device_async(ctx->path, on_bluetooth_connect_finish, cb_ctx);
 }
 
+static int bluetooth_device_cmp(gconstpointer a, gconstpointer b) {
+	const BluetoothDevice *da = *(const BluetoothDevice **)a;
+	const BluetoothDevice *db = *(const BluetoothDevice **)b;
+	int pa = da->connected || da->paired;
+	int pb = db->connected || db->paired;
+	return pb - pa;
+}
+
 static void show_bluetooth_menu(BarWindow *bw, AppState *state) {
 	chromeos_menu_clear(bw);
 
@@ -447,8 +455,36 @@ static void show_bluetooth_menu(BarWindow *bw, AppState *state) {
 		return;
 	}
 
+	g_ptr_array_sort(devices, (GCompareFunc)bluetooth_device_cmp);
+
+	int show_paired = 1;
 	for (guint i = 0; i < devices->len; i++) {
 		BluetoothDevice *device = g_ptr_array_index(devices, i);
+		int is_paired = device->connected || device->paired;
+
+		if (is_paired && show_paired) {
+			GtkWidget *lbl = gtk_label_new("Paired devices");
+			gtk_style_context_add_class(gtk_widget_get_style_context(lbl), "cb-menu-section-label");
+			gtk_widget_set_halign(lbl, GTK_ALIGN_START);
+			gtk_box_pack_start(GTK_BOX(content), lbl, FALSE, FALSE, 0);
+			show_paired = 0;
+		} else if (!is_paired && !show_paired) {
+			GtkWidget *sep = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+			gtk_widget_set_margin_top(sep, 6);
+			gtk_widget_set_margin_bottom(sep, 6);
+			gtk_box_pack_start(GTK_BOX(content), sep, FALSE, FALSE, 0);
+			GtkWidget *lbl = gtk_label_new("Available devices");
+			gtk_style_context_add_class(gtk_widget_get_style_context(lbl), "cb-menu-section-label");
+			gtk_widget_set_halign(lbl, GTK_ALIGN_START);
+			gtk_box_pack_start(GTK_BOX(content), lbl, FALSE, FALSE, 0);
+			show_paired = -1;
+		} else if (!is_paired && show_paired == 1) {
+			GtkWidget *lbl = gtk_label_new("Available devices");
+			gtk_style_context_add_class(gtk_widget_get_style_context(lbl), "cb-menu-section-label");
+			gtk_widget_set_halign(lbl, GTK_ALIGN_START);
+			gtk_box_pack_start(GTK_BOX(content), lbl, FALSE, FALSE, 0);
+			show_paired = -1;
+		}
 		int is_connecting = connecting[0] && strcmp(device->path, connecting) == 0;
 		GtkWidget *btn = gtk_button_new();
 		gtk_style_context_add_class(gtk_widget_get_style_context(btn), "cb-menu-wifi-list-btn");

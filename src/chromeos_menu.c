@@ -370,6 +370,13 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  font-weight: 600; "
 	  "  font-size: 16px; "
 	  "} ");
+	A(".cb-menu-section-label { "
+	  "  color: #e8eaed; "
+	  "  font-size: 13px; "
+	  "  font-weight: 600; "
+	  "  margin-top: 4px; "
+	  "  margin-bottom: 2px; "
+	  "} ");
 	A(".cb-menu-entry { "
 	  "  background-color: #3c3c3c; "
 	  "  color: #e8eaed; "

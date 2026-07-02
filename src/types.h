@@ -104,6 +104,12 @@ typedef struct {
     } nightlight;
 
     struct {
+        float levels[16];
+        int count;
+        int transition_ms;
+    } brightness;
+
+    struct {
         LauncherApp apps[MAX_LAUNCHER_APPS];
         int count;
     } launcher;
@@ -146,6 +152,7 @@ typedef struct {
     int  bluetooth_powered;
     int  bluetooth_connected;
     char bluetooth_device[64];
+    char bluetooth_connecting[256];
 } SystemData;
 
 typedef struct {

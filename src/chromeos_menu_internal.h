@@ -9,11 +9,9 @@ enum {
 	MENU_CONTENT_WIDTH = 388,
 	MENU_CONTENT_HEIGHT = 348,
 	SLIDER_VISUAL_MIN_PX = 36,
-};
+	};
 
-#define SLIDER_VISUAL_MIN_FALLBACK 12.0
-
-typedef struct {
+	typedef struct {
 	BarWindow *bw;
 	AppState *state;
 } MenuCtx;

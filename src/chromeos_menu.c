@@ -369,6 +369,13 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  font-weight: 600; "
 	  "  font-size: 16px; "
 	  "} ");
+	A(".cb-menu-section-label { "
+	  "  color: #e8eaed; "
+	  "  font-size: 13px; "
+	  "  font-weight: 600; "
+	  "  margin-top: 4px; "
+	  "  margin-bottom: 2px; "
+	  "} ");
 	A(".cb-menu-entry { "
 	  "  background-color: #3c3c3c; "
 	  "  color: #e8eaed; "
@@ -608,10 +615,104 @@ void setup_chromeos_menu_toggle(BarWindow *bw, AppState *state) {
 }
 
 /* ── slider helpers ────────────────────────────────────────────────────────── */
+static void update_slider_minimum_state(GtkRange *range) {
+	GtkStyleContext *scale_ctx = gtk_widget_get_style_context(GTK_WIDGET(range));
+	GtkWidget *icon = g_object_get_data(G_OBJECT(range), "slider-icon");
+	GtkStyleContext *icon_ctx = icon ? gtk_widget_get_style_context(icon) : NULL;
+	gboolean minimum = slider_get_actual_value(range) <= 0.5;
+
+	if (minimum) {
+		gtk_style_context_add_class(scale_ctx, "cb-menu-slider-minimum");
+		if (icon_ctx)
+			gtk_style_context_add_class(icon_ctx, "cb-menu-slider-icon-minimum");
+	} else {
+		gtk_style_context_remove_class(scale_ctx, "cb-menu-slider-minimum");
+		if (icon_ctx)
+			gtk_style_context_remove_class(icon_ctx, "cb-menu-slider-icon-minimum");
+	}
+}
+
+static void on_slider_value_changed(GtkRange *range, gpointer data) {
+	(void)data;
+	double visual_min = slider_get_visual_min(range);
+
+	if (!slider_is_updating(range) && gtk_range_get_value(range) < visual_min) {
+		slider_set_updating(range, TRUE);
+		gtk_range_set_value(range, visual_min);
+		slider_set_updating(range, FALSE);
+	}
+
+	update_slider_minimum_state(range);
+}
+
+GtkWidget *create_menu_slider(const char *icon, const char *right_icon, double initial_val, GCallback on_changed,
+							  GCallback on_right_clicked, GCallback on_arrow_clicked, gpointer user_data, gboolean right_active,
+							  GtkWidget **scale_out) {
+	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+	gtk_style_context_add_class(gtk_widget_get_style_context(box), "cb-menu-slider-box");
+
+	GtkWidget *overlay = gtk_overlay_new();
+
+	GtkWidget *scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 100, 1);
+	if (scale_out)
+		*scale_out = scale;
+	gtk_scale_set_draw_value(GTK_SCALE(scale), FALSE);
+
+	/* Calculate visual_min based on the expected final width */
+	double expected_width = MENU_CONTENT_WIDTH;
+	if (right_icon)
+		expected_width -= 44;
+	if (on_arrow_clicked)
+		expected_width -= 32;
+
+	double initial_visual_min = (SLIDER_VISUAL_MIN_PX * 100.0) / expected_width;
+	slider_set_visual_min(GTK_RANGE(scale), initial_visual_min);
+	gtk_range_set_value(GTK_RANGE(scale), slider_get_display_value(GTK_RANGE(scale), initial_val));
+	gtk_style_context_add_class(gtk_widget_get_style_context(scale), "cb-menu-slider");
+
+	GtkWidget *icon_lbl = gtk_label_new(icon);
+	gtk_style_context_add_class(gtk_widget_get_style_context(icon_lbl), "cb-menu-slider-icon");
+	gtk_widget_set_halign(icon_lbl, GTK_ALIGN_START);
+	gtk_widget_set_valign(icon_lbl, GTK_ALIGN_CENTER);
+	g_object_set_data(G_OBJECT(scale), "slider-icon", icon_lbl);
+	g_signal_connect(scale, "value-changed", G_CALLBACK(on_slider_value_changed), NULL);
+	if (on_changed)
+		g_signal_connect(scale, "value-changed", on_changed, user_data);
+	update_slider_minimum_state(GTK_RANGE(scale));
+
+	gtk_container_add(GTK_CONTAINER(overlay), scale);
+	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), icon_lbl);
+
+	gtk_box_pack_start(GTK_BOX(box), overlay, TRUE, TRUE, 0);
+
+	if (right_icon) {
+		GtkWidget *right_btn = gtk_button_new_with_label(right_icon);
+		gtk_widget_set_valign(right_btn, GTK_ALIGN_CENTER);
+		gtk_widget_set_halign(right_btn, GTK_ALIGN_CENTER);
+		gtk_widget_set_size_request(right_btn, 36, 36);
+		gtk_style_context_add_class(gtk_widget_get_style_context(right_btn), "cb-menu-slider-btn");
+		if (right_active)
+			gtk_style_context_add_class(gtk_widget_get_style_context(right_btn), "cb-menu-slider-btn-active");
+		if (on_right_clicked)
+			g_signal_connect(right_btn, "clicked", on_right_clicked, user_data);
+		gtk_box_pack_start(GTK_BOX(box), right_btn, FALSE, FALSE, 0);
+	}
+
+	if (on_arrow_clicked) {
+		GtkWidget *arrow_btn = gtk_button_new_with_label("");
+		gtk_widget_set_valign(arrow_btn, GTK_ALIGN_CENTER);
+		gtk_style_context_add_class(gtk_widget_get_style_context(arrow_btn), "cb-menu-slider-arrow");
+		g_signal_connect(arrow_btn, "clicked", on_arrow_clicked, user_data);
+		gtk_box_pack_start(GTK_BOX(box), arrow_btn, FALSE, FALSE, 0);
+	}
+
+	return box;
+}
+
 double slider_get_visual_min(GtkRange *range) {
 	int basis_points = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(range), "slider-visual-min-bp"));
 	if (basis_points <= 0)
-		return SLIDER_VISUAL_MIN_FALLBACK;
+		return 0.0;
 	return basis_points / 100.0;
 }
 

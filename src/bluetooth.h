@@ -7,6 +7,7 @@
 typedef struct {
 	char path[256];
 	char name[128];
+	char icon[16];
 	int paired;
 	int connected;
 } BluetoothDevice;
@@ -16,5 +17,9 @@ int bluetooth_set_powered(int powered);
 GPtrArray *bluetooth_list_devices(void);
 int bluetooth_connect_device(const char *path);
 int bluetooth_disconnect_device(const char *path);
+
+typedef void (*BluetoothConnectCallback)(const char *path, int success, gpointer user_data);
+void bluetooth_connect_device_async(const char *path, BluetoothConnectCallback cb, gpointer user_data);
+void bluetooth_disconnect_device_async(const char *path, BluetoothConnectCallback cb, gpointer user_data);
 
 #endif

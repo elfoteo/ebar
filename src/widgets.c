@@ -320,6 +320,8 @@ static int nightlight_ipc(const char *cmd) {
 }
 
 /* Apply temperature + gamma via two IPC calls based on current level. */
+gboolean nightlight_retry_cb(gpointer data);
+
 static void nightlight_apply(AppState *state) {
 	pthread_mutex_lock(&state->mutex);
 	int level = state->sys_data.nightlight_level;
@@ -347,6 +349,16 @@ static void nightlight_apply(AppState *state) {
 	int err = (ok1 < 0 || ok2 < 0) ? 1 : 0;
 	pthread_mutex_lock(&state->mutex);
 	state->sys_data.nightlight_error = err;
+	if (err) {
+		state->sys_data.nightlight_retrying = 1;
+		if (state->nightlight_retry_tag == 0) {
+			state->nightlight_retries = 0;
+			state->nightlight_retry_tag = g_timeout_add(2000, (GSourceFunc)nightlight_retry_cb, state);
+		}
+	} else {
+		state->sys_data.nightlight_retrying = 0;
+		state->nightlight_retries = 0;
+	}
 	pthread_mutex_unlock(&state->mutex);
 }
 
@@ -356,7 +368,52 @@ static void nightlight_reset(AppState *state) {
 	int err = (ok1 < 0 || ok2 < 0) ? 1 : 0;
 	pthread_mutex_lock(&state->mutex);
 	state->sys_data.nightlight_error = err;
+	if (err) {
+		state->sys_data.nightlight_retrying = 1;
+		if (state->nightlight_retry_tag == 0) {
+			state->nightlight_retries = 0;
+			state->nightlight_retry_tag = g_timeout_add(2000, (GSourceFunc)nightlight_retry_cb, state);
+		}
+	} else {
+		state->sys_data.nightlight_retrying = 0;
+		state->nightlight_retries = 0;
+	}
 	pthread_mutex_unlock(&state->mutex);
+}
+
+gboolean nightlight_retry_cb(gpointer data) {
+	AppState *state = (AppState *)data;
+
+	pthread_mutex_lock(&state->mutex);
+	int active = state->sys_data.nightlight_on;
+	pthread_mutex_unlock(&state->mutex);
+
+	if (active)
+		nightlight_apply(state);
+	else
+		nightlight_reset(state);
+
+	pthread_mutex_lock(&state->mutex);
+	int err = state->sys_data.nightlight_error;
+	if (!err) {
+		state->sys_data.nightlight_retrying = 0;
+		state->nightlight_retry_tag = 0;
+		state->nightlight_retries = 0;
+		pthread_mutex_unlock(&state->mutex);
+		update_widgets_idle(state);
+		return G_SOURCE_REMOVE;
+	}
+	state->nightlight_retries++;
+	if (state->nightlight_retries >= 5) {
+		state->sys_data.nightlight_retrying = 0;
+		state->nightlight_retry_tag = 0;
+		state->nightlight_retries = 0;
+		pthread_mutex_unlock(&state->mutex);
+		update_widgets_idle(state);
+		return G_SOURCE_REMOVE;
+	}
+	pthread_mutex_unlock(&state->mutex);
+	return G_SOURCE_CONTINUE;
 }
 
 static gboolean on_brightness_scroll(GtkWidget *widget, GdkEventScroll *event, gpointer data) {
@@ -880,7 +937,7 @@ gboolean update_widgets_idle(gpointer data) {
 
 	int vol_changed = (d.vol != last_d.vol || d.vol_muted != last_d.vol_muted || d.visual_volume != last_d.visual_volume);
 	int brightness_changed = (d.visual_brightness != last_d.visual_brightness);
-	int nightlight_changed = (d.nightlight_level != last_d.nightlight_level || d.nightlight_error != last_d.nightlight_error);
+	int nightlight_changed = (d.nightlight_level != last_d.nightlight_level || d.nightlight_error != last_d.nightlight_error || d.nightlight_retrying != last_d.nightlight_retrying);
 	int media_changed = (d.is_playing != last_d.is_playing || strcmp(d.media_title, last_d.media_title) != 0 ||
 						 strcmp(d.media_artist, last_d.media_artist) != 0);
 
@@ -1041,6 +1098,7 @@ gboolean update_widgets_idle(gpointer data) {
 		if (nightlight_changed) {
 			/* Nightlight – sun (off) / moon (on) */
 			int nl_error = d.nightlight_error;
+			int nl_retrying = d.nightlight_retrying;
 			int nl_active = (d.nightlight_level > 0 || d.nightlight_on);
 			const char *nl_icon = nl_active ? "󰖔" : "󰖙";
 
@@ -1054,10 +1112,16 @@ gboolean update_widgets_idle(gpointer data) {
 					gtk_style_context_remove_class(nlctx, "nightlight-on");
 					gtk_style_context_add_class(nlctx, "nightlight-off");
 				}
-				if (nl_error)
-					gtk_style_context_add_class(nlctx, "nightlight-error");
-				else
+				if (nl_retrying) {
+					gtk_style_context_add_class(nlctx, "nightlight-retrying");
 					gtk_style_context_remove_class(nlctx, "nightlight-error");
+				} else if (nl_error) {
+					gtk_style_context_add_class(nlctx, "nightlight-error");
+					gtk_style_context_remove_class(nlctx, "nightlight-retrying");
+				} else {
+					gtk_style_context_remove_class(nlctx, "nightlight-error");
+					gtk_style_context_remove_class(nlctx, "nightlight-retrying");
+				}
 			}
 			if (bw->nightlight_ring)
 				gtk_widget_queue_draw(bw->nightlight_ring);

@@ -16,5 +16,6 @@ gboolean update_widgets_idle(gpointer data);
 gboolean timer_update_widgets(gpointer data); /* use this for g_timeout_add */
 const char *get_wifi_icon(int q);
 void nightlight_init(AppState *state);
+gboolean nightlight_retry_cb(gpointer data);
 #endif
 

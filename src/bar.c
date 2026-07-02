@@ -157,6 +157,7 @@ void apply_global_css(AppState *state) {
     A(".nightlight-btn.nightlight-on { margin-left: 4px; margin-top: -1px; } ");
     A(".nightlight-btn.nightlight-off { margin-left: 3px; margin-top: -1px; } ");
     A(".nightlight-btn.nightlight-error { color: #e05555; margin-left: 4px; margin-top: -1px; } ");
+    A(".nightlight-btn.nightlight-retrying { color: #e08855; margin-left: 4px; margin-top: -1px; } ");
 
     /* media */
     A(".media-box { background-color: %s; "

@@ -93,8 +93,19 @@ static void nightlight_apply(AppState *state) {
 	snprintf(cmd, sizeof(cmd), "gamma %.0f", gamma);
 	int ok2 = nightlight_ipc(cmd);
 
+	int err = (ok1 < 0 || ok2 < 0) ? 1 : 0;
 	pthread_mutex_lock(&state->mutex);
-	state->sys_data.nightlight_error = (ok1 < 0 || ok2 < 0) ? 1 : 0;
+	state->sys_data.nightlight_error = err;
+	if (err) {
+		state->sys_data.nightlight_retrying = 1;
+		if (state->nightlight_retry_tag == 0) {
+			state->nightlight_retries = 0;
+			state->nightlight_retry_tag = g_timeout_add(2000, (GSourceFunc)nightlight_retry_cb, state);
+		}
+	} else {
+		state->sys_data.nightlight_retrying = 0;
+		state->nightlight_retries = 0;
+	}
 	pthread_mutex_unlock(&state->mutex);
 }
 
@@ -102,8 +113,19 @@ static void nightlight_reset(AppState *state) {
 	int ok1 = nightlight_ipc("temperature 6500");
 	int ok2 = nightlight_ipc("gamma 100");
 
+	int err = (ok1 < 0 || ok2 < 0) ? 1 : 0;
 	pthread_mutex_lock(&state->mutex);
-	state->sys_data.nightlight_error = (ok1 < 0 || ok2 < 0) ? 1 : 0;
+	state->sys_data.nightlight_error = err;
+	if (err) {
+		state->sys_data.nightlight_retrying = 1;
+		if (state->nightlight_retry_tag == 0) {
+			state->nightlight_retries = 0;
+			state->nightlight_retry_tag = g_timeout_add(2000, (GSourceFunc)nightlight_retry_cb, state);
+		}
+	} else {
+		state->sys_data.nightlight_retrying = 0;
+		state->nightlight_retries = 0;
+	}
 	pthread_mutex_unlock(&state->mutex);
 }
 

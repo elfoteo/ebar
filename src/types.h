@@ -132,6 +132,7 @@ typedef struct {
     int  nightlight_level;  /* 0-100 curve position      */
     int  nightlight_last_level; /* remembered level for toggle */
     int  nightlight_error;  /* 1 = last IPC call failed  */
+    int  nightlight_retrying; /* 1 = retrying IPC (show orange) */
     char kb_layout[32];     /* active keyboard layout code, e.g. "US" */
     int  bat_percent;
     int  bat_charging;
@@ -219,6 +220,8 @@ typedef struct AppState {
     int has_fullscreen;  /* 1 when a fullscreen window is active */
     GList *app_list;
     guint anim_timer_id;
+    guint nightlight_retry_tag;
+    int nightlight_retries;
     gpointer nm_client; /* NMClient*, kept as gpointer to avoid header dependency */
 } AppState;
 

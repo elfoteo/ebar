@@ -3,6 +3,7 @@
 #include "chromeos_menu_internal.h"
 #include "gtk-layer-shell.h"
 #include "ipc.h"
+#include "pulse.h"
 #include <gtk/gtk.h>
 #include <time.h>
 
@@ -104,9 +105,7 @@ static void on_popup_volume_changed(GtkRange *range, gpointer data) {
 		state->sys_data.vol_muted = 0;
 	pthread_mutex_unlock(&state->mutex);
 
-	char cmd[64];
-	snprintf(cmd, sizeof(cmd), "pactl set-sink-volume @DEFAULT_SINK@ %.0f%%", val);
-	g_spawn_command_line_async(cmd, NULL);
+	pulse_set_volume(state, val);
 	update_widgets_idle(state);
 }
 

@@ -8,6 +8,8 @@
 #define MAX_WORKSPACES 10
 #define MAX_LAUNCHER_APPS 15
 
+typedef struct PulseState PulseState;
+
 typedef struct {
     char action[128];
     char icon_path[256];
@@ -230,6 +232,7 @@ typedef struct AppState {
     guint nightlight_retry_tag;
     int nightlight_retries;
     gpointer nm_client; /* NMClient*, kept as gpointer to avoid header dependency */
+    PulseState *pulse;
 } AppState;
 
 #endif

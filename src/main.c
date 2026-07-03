@@ -6,6 +6,7 @@
 #include "ipc.h"
 #include "media.h"
 #include "metrics.h"
+#include "pulse.h"
 #include "types.h"
 #include "widgets.h"
 #include "wifi.h"
@@ -306,18 +307,19 @@ int main(int argc, char **argv) {
 	}
 
 	wifi_init(state);
+	pulse_init(state);
 	update_widgets_idle(state);
 	ensure_anim_timer(state);
 
-	pthread_t ipc_thread, metrics_thread, media_thread, volume_thread, extra_events_thread;
+	pthread_t ipc_thread, metrics_thread, media_thread, extra_events_thread;
 	pthread_create(&ipc_thread, NULL, ipc_thread_func, state);
 	pthread_create(&metrics_thread, NULL, metrics_thread_func, state);
 	pthread_create(&media_thread, NULL, media_thread_func, state);
-	pthread_create(&volume_thread, NULL, volume_thread_func, state);
 	pthread_create(&extra_events_thread, NULL, extra_events_thread_func, state);
 
 	gtk_main();
 
+	pulse_cleanup(state);
 	wifi_cleanup(state);
 
 	return 0;

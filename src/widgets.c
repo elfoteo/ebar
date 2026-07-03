@@ -3,6 +3,7 @@
 #include "chromeos_menu_internal.h"
 #include "chromeos_popup.h"
 #include "gtk-layer-shell.h"
+#include "pulse.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -68,9 +69,7 @@ static gboolean on_volume_scroll(GtkWidget *widget, GdkEventScroll *event, gpoin
 	w->sys_data.vol = CLAMP(w->sys_data.vol + delta, 0.0, 100.0);
 	double vol = w->sys_data.vol;
 	pthread_mutex_unlock(&w->mutex);
-	char cmd[64];
-	snprintf(cmd, sizeof(cmd), "pactl set-sink-volume @DEFAULT_SINK@ %.0f%%", vol);
-	g_spawn_command_line_async(cmd, NULL);
+	pulse_set_volume(w, vol);
 	/* Trigger volume popup on each bar window */
 	for (GList *l = w->bar_windows; l != NULL; l = l->next)
 		g_idle_add(trigger_volume_popup_idle, l->data);
@@ -87,8 +86,9 @@ static gboolean on_volume_click(GtkWidget *widget, GdkEventButton *event, gpoint
 		pthread_mutex_lock(&w->mutex);
 		w->last_manual_vol_update = time(NULL);
 		w->sys_data.vol_muted = !w->sys_data.vol_muted;
+		int muted = w->sys_data.vol_muted;
 		pthread_mutex_unlock(&w->mutex);
-		g_spawn_command_line_async("pactl set-sink-mute @DEFAULT_SINK@ toggle", NULL);
+		pulse_set_mute(w, muted);
 		update_widgets_idle(w);
 	}
 	return TRUE;

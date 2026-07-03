@@ -4,7 +4,6 @@
 #include "types.h"
 
 void *metrics_thread_func(void *data);
-void *volume_thread_func(void *data);
 void fetch_brightness(AppState *w);
 void backlight_monitor_init(AppState *w);
 

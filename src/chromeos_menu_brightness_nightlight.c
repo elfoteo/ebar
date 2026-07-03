@@ -1,7 +1,7 @@
 #include "chromeos_menu_internal.h"
+#include "pulse.h"
 #include "widgets.h"
 #include <math.h>
-#include <stdio.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -164,9 +164,7 @@ static void on_vol_scale_changed(GtkRange *range, gpointer data) {
 			state->sys_data.vol_muted = 0;
 		pthread_mutex_unlock(&state->mutex);
 	}
-	char cmd[64];
-	snprintf(cmd, sizeof(cmd), "pactl set-sink-volume @DEFAULT_SINK@ %.0f%%", val);
-	g_spawn_command_line_async(cmd, NULL);
+	pulse_set_volume(state, val);
 	if (state)
 		update_widgets_idle(state);
 }
@@ -184,9 +182,7 @@ static void on_mute_clicked(GtkWidget *widget, gpointer data) {
 	state->sys_data.vol_muted = !muted;
 	pthread_mutex_unlock(&state->mutex);
 
-	char cmd[64];
-	snprintf(cmd, sizeof(cmd), "pactl set-sink-mute @DEFAULT_SINK@ %d", muted ? 0 : 1);
-	g_spawn_command_line_async(cmd, NULL);
+	pulse_set_mute(state, !muted);
 	GtkStyleContext *style = gtk_widget_get_style_context(widget);
 	if (muted)
 		gtk_style_context_remove_class(style, "cb-menu-slider-btn-active");

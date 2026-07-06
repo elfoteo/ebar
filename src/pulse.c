@@ -55,11 +55,15 @@ static void pulse_server_info_callback(pa_context *c, const pa_server_info *i, v
 
 static void pulse_subscription_callback(pa_context *c, pa_subscription_event_type_t t, uint32_t idx, void *userdata) {
 	AppState *state = (AppState *)userdata;
+	(void)idx;
 
+	/* On any sink event (NEW or CHANGE), re-query the DEFAULT sink volume,
+	 * mirroring the pactl subscribe + pactl get-sink-volume @DEFAULT_SINK@
+	 * behaviour: we always show the default sink, not the event sink. */
 	switch (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) {
 	case PA_SUBSCRIPTION_EVENT_SINK:
-		if ((t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_CHANGE)
-			pa_context_get_sink_info_by_index(c, idx, pulse_sink_info_callback, state);
+		if ((t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) != PA_SUBSCRIPTION_EVENT_REMOVE)
+			pa_context_get_server_info(c, pulse_server_info_callback, state);
 		break;
 	case PA_SUBSCRIPTION_EVENT_SERVER:
 		pa_context_get_server_info(c, pulse_server_info_callback, state);

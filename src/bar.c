@@ -263,6 +263,7 @@ void create_bar_window(GdkMonitor *monitor, AppState *state) {
 
     BarWindow *bw = g_new0(BarWindow, 1);
     bw->window = win;
+    bw->monitor = monitor;
     bw->state = state;
 
     /* Outer hbox – same spacing (12) */

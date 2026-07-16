@@ -882,6 +882,18 @@ static const char *get_battery_icon(int cap, int charging) {
 	return charging ? charging_icons[idx] : discharging[idx];
 }
 
+static SystemData last_d;
+static int last_d_init = 0;
+static time_t last_time = 0;
+static int last_active_ws = -1;
+static int last_ws_count[MAX_WORKSPACES + 1];
+static int last_ws_count_init = 0;
+
+void update_widgets_idle_reset(void) {
+	last_d_init = 0;
+	last_ws_count_init = 0;
+}
+
 gboolean update_widgets_idle(gpointer data) {
 	AppState *w = (AppState *)data;
 	pthread_mutex_lock(&w->mutex);
@@ -892,12 +904,6 @@ gboolean update_widgets_idle(gpointer data) {
 	pthread_mutex_unlock(&w->mutex);
 
 	time_t now = time(NULL);
-	static SystemData last_d;
-	static int last_d_init = 0;
-	static time_t last_time = 0;
-	static int last_active_ws = -1;
-	static int last_ws_count[MAX_WORKSPACES + 1];
-	static int last_ws_count_init = 0;
 
 	if (!last_d_init) {
 		memset(&last_d, 0, sizeof(last_d));

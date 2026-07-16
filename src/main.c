@@ -218,6 +218,31 @@ void ensure_anim_timer(AppState *state) {
 	pthread_mutex_unlock(&state->mutex);
 }
 
+static void on_monitor_added(GdkDisplay *display, GdkMonitor *monitor, gpointer data) {
+	(void)display;
+	AppState *state = (AppState *)data;
+	create_bar_window(monitor, state);
+	update_widgets_idle_reset();
+	g_idle_add(update_widgets_idle, state);
+}
+
+static void on_monitor_removed(GdkDisplay *display, GdkMonitor *monitor, gpointer data) {
+	(void)display;
+	AppState *state = (AppState *)data;
+	BarWindow *target = NULL;
+	pthread_mutex_lock(&state->mutex);
+	for (GList *l = state->bar_windows; l; l = l->next) {
+		BarWindow *bw = (BarWindow *)l->data;
+		if (bw->monitor == monitor) {
+			target = bw;
+			break;
+		}
+	}
+	pthread_mutex_unlock(&state->mutex);
+	if (target)
+		gtk_widget_destroy(target->window);
+}
+
 int main(int argc, char **argv) {
 	if (argc > 1) {
 		if (strcmp(argv[1], "--togglefloat") == 0) {
@@ -300,6 +325,8 @@ int main(int argc, char **argv) {
 		GdkMonitor *monitor = gdk_display_get_monitor(display, i);
 		create_bar_window(monitor, state);
 	}
+	g_signal_connect(display, "monitor-added",   G_CALLBACK(on_monitor_added),   state);
+	g_signal_connect(display, "monitor-removed", G_CALLBACK(on_monitor_removed), state);
 
 	if (state->config.mode == MODE_CHROMEOS) {
 		chromeos_menu_apply_css(state);

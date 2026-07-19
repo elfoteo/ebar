@@ -757,6 +757,7 @@ void update_workspace_display(AppState *w) {
 			char buf[64];
 			snprintf(buf, sizeof(buf), "Desk %d", w->active_workspace);
 			gtk_label_set_text(GTK_LABEL(bw->cb_desk_label), buf);
+			gtk_widget_queue_draw(bw->cb_desk_label);
 		}
 		for (int i = 0; i < w->config.workspaces.count; i++) {
 			if (!bw->ws_labels[i])
@@ -777,6 +778,7 @@ void update_workspace_display(AppState *w) {
 				gtk_widget_hide(bw->ws_labels[i]);
 			else
 				gtk_widget_show(bw->ws_labels[i]);
+			gtk_widget_queue_draw(bw->ws_labels[i]);
 		}
 	}
 	pthread_mutex_unlock(&w->mutex);

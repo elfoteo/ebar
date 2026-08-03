@@ -289,48 +289,37 @@ void create_bar_window(GdkMonitor *monitor, AppState *state) {
     add_widgets_to_box(bw->right_box,  state->config.right.widgets,  bw, state);
 
     if (state->config.mode == MODE_ISLAND) {
-        /* Island mode: wrap each section in an EventBox so we can Cairo-paint
-         * the pill background with the correct shape (melting or floating). */
-        GtkWidget *l_wrap = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-        GtkWidget *c_wrap = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-        GtkWidget *r_wrap = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+        /* Island mode: wrap each non-empty section so we can Cairo-paint
+         * the pill background with the correct shape (melting or floating).
+         * Empty sections get no pill at all. */
+        struct { GtkWidget *box, *wrap; int pos, start_pad, end_pad; } secs[3] = {
+            { bw->left_box,   NULL, 1, state->config.padding_h, state->config.padding_h + state->config.border_radius },
+            { bw->center_box, NULL, 2, state->config.padding_h + state->config.border_radius, state->config.padding_h + state->config.border_radius },
+            { bw->right_box,  NULL, 3, state->config.padding_h + state->config.border_radius, state->config.padding_h },
+        };
 
-        gtk_widget_set_app_paintable(l_wrap, TRUE);
-        gtk_widget_set_app_paintable(c_wrap, TRUE);
-        gtk_widget_set_app_paintable(r_wrap, TRUE);
+        for (int i = 0; i < 3; i++) {
+            if (!gtk_container_get_children(GTK_CONTAINER(secs[i].box)))
+                continue;
+            secs[i].wrap = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+            gtk_widget_set_app_paintable(secs[i].wrap, TRUE);
 
-        /* Inner padding for each pill. Add border_radius to horizontal padding
-         * where the pill walls are inset to allow the bottom fillet to flare out.
-         * The far edges of l_wrap and r_wrap are flush with screen. */
-        int pad_h = state->config.padding_h + state->config.border_radius;
-        gtk_widget_set_margin_top(bw->left_box,      state->config.padding_v);
-        gtk_widget_set_margin_bottom(bw->left_box,   state->config.padding_v);
-        gtk_widget_set_margin_start(bw->left_box,    state->config.padding_h);
-        gtk_widget_set_margin_end(bw->left_box,      pad_h);
-        gtk_widget_set_margin_top(bw->center_box,    state->config.padding_v);
-        gtk_widget_set_margin_bottom(bw->center_box, state->config.padding_v);
-        gtk_widget_set_margin_start(bw->center_box,  pad_h);
-        gtk_widget_set_margin_end(bw->center_box,    pad_h);
-        gtk_widget_set_margin_top(bw->right_box,     state->config.padding_v);
-        gtk_widget_set_margin_bottom(bw->right_box,  state->config.padding_v);
-        gtk_widget_set_margin_start(bw->right_box,   pad_h);
-        gtk_widget_set_margin_end(bw->right_box,     state->config.padding_h);
+            /* Inner padding for each pill. Add border_radius to horizontal padding
+             * where the pill walls are inset to allow the bottom fillet to flare out.
+             * The far edges of l_wrap and r_wrap are flush with screen. */
+            gtk_widget_set_margin_top(secs[i].box,    state->config.padding_v);
+            gtk_widget_set_margin_bottom(secs[i].box, state->config.padding_v);
+            gtk_widget_set_margin_start(secs[i].box,  secs[i].start_pad);
+            gtk_widget_set_margin_end(secs[i].box,    secs[i].end_pad);
 
-        g_object_set_data(G_OBJECT(l_wrap), "island_pos", GINT_TO_POINTER(1));
-        g_object_set_data(G_OBJECT(c_wrap), "island_pos", GINT_TO_POINTER(2));
-        g_object_set_data(G_OBJECT(r_wrap), "island_pos", GINT_TO_POINTER(3));
+            g_object_set_data(G_OBJECT(secs[i].wrap), "island_pos", GINT_TO_POINTER(secs[i].pos));
+            gtk_container_add(GTK_CONTAINER(secs[i].wrap), secs[i].box);
+            g_signal_connect(secs[i].wrap, "draw", G_CALLBACK(on_island_draw), state);
+        }
 
-        gtk_container_add(GTK_CONTAINER(l_wrap), bw->left_box);
-        gtk_container_add(GTK_CONTAINER(c_wrap), bw->center_box);
-        gtk_container_add(GTK_CONTAINER(r_wrap), bw->right_box);
-
-        g_signal_connect(l_wrap, "draw", G_CALLBACK(on_island_draw), state);
-        g_signal_connect(c_wrap, "draw", G_CALLBACK(on_island_draw), state);
-        g_signal_connect(r_wrap, "draw", G_CALLBACK(on_island_draw), state);
-
-        gtk_box_pack_start(GTK_BOX(hbox), l_wrap, FALSE, FALSE, 0);
-        gtk_box_set_center_widget(GTK_BOX(hbox), c_wrap);
-        gtk_box_pack_end(GTK_BOX(hbox), r_wrap, FALSE, FALSE, 0);
+        if (secs[0].wrap) gtk_box_pack_start(GTK_BOX(hbox), secs[0].wrap, FALSE, FALSE, 0);
+        if (secs[1].wrap) gtk_box_set_center_widget(GTK_BOX(hbox), secs[1].wrap);
+        if (secs[2].wrap) gtk_box_pack_end(GTK_BOX(hbox), secs[2].wrap, FALSE, FALSE, 0);
 
         /* For island the transparency is in the pill border, not main-container */
         gtk_container_add(GTK_CONTAINER(win), hbox);

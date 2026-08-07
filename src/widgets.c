@@ -780,6 +780,7 @@ void update_workspace_display(AppState *w) {
 				gtk_widget_show(bw->ws_labels[i]);
 			gtk_widget_queue_draw(bw->ws_labels[i]);
 		}
+		gtk_widget_queue_draw(bw->window);
 	}
 	pthread_mutex_unlock(&w->mutex);
 }
@@ -838,6 +839,7 @@ void update_metric_widget(GtkWidget *widget, MetricType type, SystemData *d, int
 		}
 		gtk_label_set_text(GTK_LABEL(widget), buf);
 	}
+	gtk_widget_queue_draw(widget);
 }
 
 const char *get_wifi_icon(int q) {

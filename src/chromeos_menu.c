@@ -548,6 +548,15 @@ void toggle_chromeos_menu(BarWindow *bw, AppState *state) {
 		return;
 
 	close_all_chromeos_launchers(state);
+	if (bw->popup_window) {
+		gtk_widget_hide(bw->popup_window);
+		for (int i = 0; i < POPUP_COUNT; i++) {
+			if (bw->popup_timer[i]) {
+				g_source_remove(bw->popup_timer[i]);
+				bw->popup_timer[i] = 0;
+			}
+		}
+	}
 	bw->menu_window = create_chromeos_menu(bw, state);
 	g_signal_connect(bw->menu_window, "destroy", G_CALLBACK(on_menu_destroy), bw);
 

@@ -4,10 +4,17 @@
 #include "gtk-layer-shell.h"
 #include "nightlight.h"
 #include "pulse.h"
+#include "util.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define VOLUME_SCROLL_STEP   2.0
+#define BRIGHTNESS_SCROLL_STEP 5.0
+#define RING_SIZE           48
+#define RING_THICKNESS      3.0
+#define RING_PADDING        2.0
 
 static gboolean on_btn_enter(GtkWidget *widget, GdkEventCrossing *event, gpointer data) {
 	(void)data;
@@ -54,11 +61,11 @@ static gboolean on_volume_scroll(GtkWidget *widget, GdkEventScroll *event, gpoin
 	AppState *w = (AppState *)data;
 	double delta = 0;
 	if (event->direction == GDK_SCROLL_UP)
-		delta = 2.0;
+		delta = VOLUME_SCROLL_STEP;
 	else if (event->direction == GDK_SCROLL_DOWN)
-		delta = -2.0;
+		delta = -VOLUME_SCROLL_STEP;
 	else if (event->direction == GDK_SCROLL_SMOOTH)
-		delta = -event->delta_y * 2.0;
+		delta = -event->delta_y * VOLUME_SCROLL_STEP;
 	if (delta == 0)
 		return TRUE;
 	pthread_mutex_lock(&w->mutex);
@@ -91,6 +98,29 @@ static gboolean on_volume_click(GtkWidget *widget, GdkEventButton *event, gpoint
 	return TRUE;
 }
 
+static void draw_ring(cairo_t *cr, GtkAllocation *alloc, double pct, const GdkRGBA *ring) {
+	double cx = alloc->width / 2.0;
+	double cy = alloc->height / 2.0;
+	double radius = (MIN(alloc->width, alloc->height) / 2.0) - RING_THICKNESS / 2.0 - RING_PADDING;
+	double start = -M_PI / 2.0;
+
+	cairo_set_line_width(cr, RING_THICKNESS);
+	cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+
+	/* Background track */
+	cairo_set_source_rgba(cr, ring->red, ring->green, ring->blue, 0.15);
+	cairo_arc(cr, cx, cy, radius, 0, 2 * M_PI);
+	cairo_stroke(cr);
+
+	/* Foreground arc */
+	if (pct > 0.5) {
+		double end = start + (pct / 100.0) * 2.0 * M_PI;
+		gdk_cairo_set_source_rgba(cr, ring);
+		cairo_arc(cr, cx, cy, radius, start, end);
+		cairo_stroke(cr);
+	}
+}
+
 static gboolean on_volume_ring_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
 	AppState *state = (AppState *)data;
 	pthread_mutex_lock(&state->mutex);
@@ -100,34 +130,10 @@ static gboolean on_volume_ring_draw(GtkWidget *widget, cairo_t *cr, gpointer dat
 
 	GtkAllocation alloc;
 	gtk_widget_get_allocation(widget, &alloc);
-	double cx = alloc.width / 2.0;
-	double cy = alloc.height / 2.0;
-	double thickness = 3.0;
-	double radius = (MIN(alloc.width, alloc.height) / 2.0) - thickness / 2.0 - 2.0;
-	double start = -M_PI / 2.0;
-
-	/* Parse ring colour from config */
 	GdkRGBA ring;
-	if (!gdk_rgba_parse(&ring, state->config.colors.ring_color)) {
+	if (!gdk_rgba_parse(&ring, state->config.colors.ring_color))
 		ring = (GdkRGBA){1.0, 1.0, 1.0, 0.9};
-	}
-
-	cairo_set_line_width(cr, thickness);
-	cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-
-	/* Background track */
-	cairo_set_source_rgba(cr, ring.red, ring.green, ring.blue, 0.15);
-	cairo_arc(cr, cx, cy, radius, 0, 2 * M_PI);
-	cairo_stroke(cr);
-
-	/* Volume arc */
-	if (!muted && vol > 0.5) {
-		double end = start + (vol / 100.0) * 2.0 * M_PI;
-		gdk_cairo_set_source_rgba(cr, &ring);
-		cairo_arc(cr, cx, cy, radius, start, end);
-		cairo_stroke(cr);
-	}
-
+	draw_ring(cr, &alloc, muted ? 0 : vol, &ring);
 	return FALSE;
 }
 
@@ -232,7 +238,7 @@ GtkWidget *widget_volume(BarWindow *bw, AppState *state) {
 
 	/* Drawing area – ring visual only, no event connections needed */
 	bw->volume_ring = gtk_drawing_area_new();
-	gtk_widget_set_size_request(bw->volume_ring, 48, 48);
+	gtk_widget_set_size_request(bw->volume_ring, RING_SIZE, RING_SIZE);
 	gtk_widget_set_halign(bw->volume_ring, GTK_ALIGN_CENTER);
 	gtk_widget_set_valign(bw->volume_ring, GTK_ALIGN_CENTER);
 	g_signal_connect(bw->volume_ring, "draw", G_CALLBACK(on_volume_ring_draw), state);
@@ -258,11 +264,11 @@ static gboolean on_brightness_scroll(GtkWidget *widget, GdkEventScroll *event, g
 	AppState *w = bw->state;
 	double delta = 0;
 	if (event->direction == GDK_SCROLL_UP)
-		delta = 5.0;
+		delta = BRIGHTNESS_SCROLL_STEP;
 	else if (event->direction == GDK_SCROLL_DOWN)
-		delta = -5.0;
+		delta = -BRIGHTNESS_SCROLL_STEP;
 	else if (event->direction == GDK_SCROLL_SMOOTH)
-		delta = -event->delta_y * 5.0;
+		delta = -event->delta_y * BRIGHTNESS_SCROLL_STEP;
 	if (delta == 0)
 		return TRUE;
 	pthread_mutex_lock(&w->mutex);
@@ -294,31 +300,10 @@ static gboolean on_brightness_ring_draw(GtkWidget *widget, cairo_t *cr, gpointer
 
 	GtkAllocation alloc;
 	gtk_widget_get_allocation(widget, &alloc);
-	double cx = alloc.width / 2.0;
-	double cy = alloc.height / 2.0;
-	double thickness = 3.0;
-	double radius = (MIN(alloc.width, alloc.height) / 2.0) - thickness / 2.0 - 2.0;
-	double start = -M_PI / 2.0;
-
 	GdkRGBA ring;
 	if (!gdk_rgba_parse(&ring, state->config.colors.ring_color))
 		ring = (GdkRGBA){1.0, 1.0, 1.0, 0.9};
-
-	cairo_set_line_width(cr, thickness);
-	cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-
-	/* Background track */
-	cairo_set_source_rgba(cr, ring.red, ring.green, ring.blue, 0.15);
-	cairo_arc(cr, cx, cy, radius, 0, 2 * M_PI);
-	cairo_stroke(cr);
-
-	/* Brightness arc */
-	if (bright > 0) {
-		double end = start + (bright / 100.0) * 2.0 * M_PI;
-		gdk_cairo_set_source_rgba(cr, &ring);
-		cairo_arc(cr, cx, cy, radius, start, end);
-		cairo_stroke(cr);
-	}
+	draw_ring(cr, &alloc, bright, &ring);
 	return FALSE;
 }
 
@@ -329,7 +314,7 @@ GtkWidget *widget_brightness(BarWindow *bw, AppState *state) {
 	bw->brightness_btn = btn;
 
 	GtkWidget *ring = gtk_drawing_area_new();
-	gtk_widget_set_size_request(ring, 48, 48);
+	gtk_widget_set_size_request(ring, RING_SIZE, RING_SIZE);
 	g_signal_connect(ring, "draw", G_CALLBACK(on_brightness_ring_draw), state);
 	bw->brightness_ring = ring;
 
@@ -354,31 +339,10 @@ static gboolean on_nightlight_ring_draw(GtkWidget *widget, cairo_t *cr, gpointer
 
 	GtkAllocation alloc;
 	gtk_widget_get_allocation(widget, &alloc);
-	double cx = alloc.width / 2.0;
-	double cy = alloc.height / 2.0;
-	double thickness = 3.0;
-	double radius = (MIN(alloc.width, alloc.height) / 2.0) - thickness / 2.0 - 2.0;
-	double start = -M_PI / 2.0;
-
 	GdkRGBA ring;
 	if (!gdk_rgba_parse(&ring, state->config.colors.ring_color))
 		ring = (GdkRGBA){1.0, 1.0, 1.0, 0.9};
-
-	cairo_set_line_width(cr, thickness);
-	cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-
-	/* Background track */
-	cairo_set_source_rgba(cr, ring.red, ring.green, ring.blue, 0.15);
-	cairo_arc(cr, cx, cy, radius, 0, 2 * M_PI);
-	cairo_stroke(cr);
-
-	/* Level arc – clockwise from 12 o'clock */
-	if (nl_level > 0) {
-		double end = start + (nl_level / 100.0) * 2.0 * M_PI;
-		gdk_cairo_set_source_rgba(cr, &ring);
-		cairo_arc(cr, cx, cy, radius, start, end);
-		cairo_stroke(cr);
-	}
+	draw_ring(cr, &alloc, nl_level, &ring);
 	return FALSE;
 }
 
@@ -466,7 +430,7 @@ GtkWidget *widget_nightlight(BarWindow *bw, AppState *state) {
 	GtkWidget *overlay = gtk_overlay_new();
 
 	bw->nightlight_ring = gtk_drawing_area_new();
-	gtk_widget_set_size_request(bw->nightlight_ring, 48, 48);
+	gtk_widget_set_size_request(bw->nightlight_ring, RING_SIZE, RING_SIZE);
 	gtk_widget_set_halign(bw->nightlight_ring, GTK_ALIGN_CENTER);
 	gtk_widget_set_valign(bw->nightlight_ring, GTK_ALIGN_CENTER);
 	g_signal_connect(bw->nightlight_ring, "draw", G_CALLBACK(on_nightlight_ring_draw), state);
@@ -785,13 +749,7 @@ gboolean update_widgets_idle(gpointer data) {
 		}
 
 		if (vol_changed) {
-			const char *vicon = "󰕾";
-			if (d.vol_muted || d.vol == 0)
-				vicon = "󰝟";
-			else if (d.vol <= 33)
-				vicon = "󰕿";
-			else if (d.vol <= 66)
-				vicon = "󰖀";
+			const char *vicon = get_volume_icon(d.vol, d.vol_muted);
 			char vstr[32];
 			if (d.vol_muted)
 				snprintf(vstr, sizeof(vstr), "%s%s", vicon, w->config.volume.show_percent ? " Muted" : "");

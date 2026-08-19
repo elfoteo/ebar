@@ -1,6 +1,7 @@
 #include "metrics.h"
 #include "bar.h"
 #include "bluetooth.h"
+#include "util.h"
 #include "wifi.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -153,19 +154,8 @@ void fetch_brightness(AppState *w) {
     static char max_path[256] = "";
 
     if (actual_path[0] == '\0') {
-        glob_t g;
-        if (glob("/sys/class/backlight/*/actual_brightness", 0, NULL, &g) == 0) {
-            if (g.gl_pathc > 0) {
-                strncpy(actual_path, g.gl_pathv[0], sizeof(actual_path) - 1);
-                char *p = strstr(actual_path, "actual_brightness");
-                if (p) {
-                    size_t prefix_len = p - actual_path;
-                    strncpy(max_path, actual_path, prefix_len);
-                    strcpy(max_path + prefix_len, "max_brightness");
-                }
-            }
-            globfree(&g);
-        }
+        if (find_backlight_path("actual_brightness", actual_path, sizeof(actual_path)) == 0)
+            find_backlight_path("max_brightness", max_path, sizeof(max_path));
     }
 
     if (actual_path[0] == '\0') return;

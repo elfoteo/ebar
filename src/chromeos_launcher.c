@@ -2,6 +2,7 @@
 #include "chromeos_menu.h"
 #include "gtk-layer-shell.h"
 #include "ipc.h"
+#include "util.h"
 #include <gio/gio.h>
 #include <string.h>
 
@@ -14,13 +15,6 @@ typedef struct {
 } AppWidget;
 
 #include <gdk/gdkkeysyms.h>
-#include <time.h>
-
-static long long get_time_ms(void) {
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-}
 
 static long long launcher_opened_time = 0;
 static long long last_launcher_destroy_time = 0;
@@ -204,10 +198,7 @@ static GtkWidget *create_launcher_window(BarWindow *bw, AppState *state) {
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title(GTK_WINDOW(win), "ebar-launcher");
 
-	GdkScreen *screen = gdk_screen_get_default();
-	GdkVisual *visual = gdk_screen_get_rgba_visual(screen);
-	if (visual && gdk_screen_is_composited(screen))
-		gtk_widget_set_visual(win, visual);
+	setup_transparent_window(win);
 
 	gtk_widget_set_name(win, "launcher-window");
 	gtk_style_context_add_class(gtk_widget_get_style_context(win), "launcher-window");

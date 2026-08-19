@@ -2,18 +2,13 @@
 #include "chromeos_launcher.h"
 #include "chromeos_menu_internal.h"
 #include "gtk-layer-shell.h"
+#include "ipc.h"
+#include "util.h"
 #include <gdk/gdkkeysyms.h>
-#include <time.h>
 
 static long long last_destroy_time = 0;
 static long long last_menu_opened_time = 0;
 static GtkWidget *last_sys_btn = NULL;
-
-static long long get_time_ms(void) {
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-}
 
 void chromeos_menu_free_generic_ctx(gpointer data, GClosure *closure) {
 	(void)closure;
@@ -451,12 +446,7 @@ static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
 	gtk_widget_set_name(win, "ebar-menu-window");
 	gtk_style_context_add_class(gtk_widget_get_style_context(win), "ebar-menu-window");
 
-	GdkScreen *screen = gdk_screen_get_default();
-	GdkVisual *visual = gdk_screen_get_rgba_visual(screen);
-	if (visual && gdk_screen_is_composited(screen))
-		gtk_widget_set_visual(win, visual);
-
-	gtk_widget_set_app_paintable(win, TRUE);
+	setup_transparent_window(win);
 	g_signal_connect(win, "focus-out-event", G_CALLBACK(on_focus_out), bw);
 	g_signal_connect(win, "key-press-event", G_CALLBACK(on_key_press), NULL);
 
@@ -478,7 +468,6 @@ static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
 	gtk_layer_set_exclusive_zone(GTK_WINDOW(win), -1);
 
 /* Hyprland bug bypass: force RGBX to prevent unintended transparency/blur issues */
-#include "ipc.h"
 	char *res = hyprctl_request("keyword windowrule forcergbx,title:^(ebar-menu)$");
 	if (res)
 		free(res);
@@ -633,11 +622,12 @@ void setup_chromeos_menu_toggle(BarWindow *bw, AppState *state) {
 }
 
 /* ── slider helpers ────────────────────────────────────────────────────────── */
-static void update_slider_minimum_state(GtkRange *range) {
+void update_slider_minimum_state(GtkRange *range) {
 	GtkStyleContext *scale_ctx = gtk_widget_get_style_context(GTK_WIDGET(range));
 	GtkWidget *icon = g_object_get_data(G_OBJECT(range), "slider-icon");
 	GtkStyleContext *icon_ctx = icon ? gtk_widget_get_style_context(icon) : NULL;
-	gboolean minimum = slider_get_actual_value(range) <= 0.5;
+	gboolean muted = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(range), "muted"));
+	gboolean minimum = (slider_get_actual_value(range) <= 0.5) || muted;
 
 	if (minimum) {
 		gtk_style_context_add_class(scale_ctx, "cb-menu-slider-minimum");

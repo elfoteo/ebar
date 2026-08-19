@@ -209,16 +209,6 @@ void wifi_cleanup(AppState *state) {
 	}
 }
 
-gboolean wifi_get_status(int *exists, int *enabled, int *connected, char *ssid, size_t ssid_len, int *strength) {
-	(void)exists;
-	(void)enabled;
-	(void)connected;
-	(void)ssid;
-	(void)ssid_len;
-	(void)strength;
-	return FALSE;
-}
-
 static void set_property_cb(GObject *object, GAsyncResult *result, gpointer user_data) {
 	GError *error = NULL;
 	nm_client_dbus_set_property_finish(NM_CLIENT(object), result, &error);

@@ -9,6 +9,7 @@
 #include "nightlight.h"
 #include "pulse.h"
 #include "types.h"
+#include "util.h"
 #include "widgets.h"
 #include "wifi.h"
 #include <math.h>
@@ -20,7 +21,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <glob.h>
 #include <time.h>
 #include <errno.h>
 
@@ -40,31 +40,18 @@ static void send_to_ebar(const char *msg) {
 	close(fd);
 }
 
-static int get_backlight_path(char *out_path, const char *filename) {
-	glob_t g;
-	int res = -1;
-	if (glob("/sys/class/backlight/*", 0, NULL, &g) == 0) {
-		if (g.gl_pathc > 0) {
-			snprintf(out_path, 256, "%s/%s", g.gl_pathv[0], filename);
-			res = 0;
-		}
-		globfree(&g);
-	}
-	return res;
-}
-
 static float get_current_brightness() {
 	char path[256];
 	long actual = 0, max = 1;
 	
-	if (get_backlight_path(path, "actual_brightness") == 0) {
+	if (find_backlight_path("actual_brightness", path, sizeof(path)) == 0) {
 		FILE *f = fopen(path, "r");
 		if (f) {
 			if (fscanf(f, "%ld", &actual) != 1) actual = 0;
 			fclose(f);
 		}
 	}
-	if (get_backlight_path(path, "max_brightness") == 0) {
+	if (find_backlight_path("max_brightness", path, sizeof(path)) == 0) {
 		FILE *f = fopen(path, "r");
 		if (f) {
 			if (fscanf(f, "%ld", &max) != 1) max = 1;
@@ -80,7 +67,7 @@ static float get_current_brightness() {
 
 static void set_brightness(float target_pct, int transition_ms) {
 	char b_path[256], m_path[256];
-	if (get_backlight_path(b_path, "brightness") != 0 || get_backlight_path(m_path, "max_brightness") != 0) {
+	if (find_backlight_path("brightness", b_path, sizeof(b_path)) != 0 || find_backlight_path("max_brightness", m_path, sizeof(m_path)) != 0) {
 		fprintf(stderr, "CRITICAL: Could not find backlight sysfs paths\n");
 		return;
 	}

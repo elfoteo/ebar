@@ -2,10 +2,13 @@
 #include "bar.h"
 #include "chromeos_launcher.h"
 #include "chromeos_menu.h"
+#include "chromeos_menu_internal.h"
 #include "chromeos_popup.h"
+#include "metrics.h"
 #include "util.h"
 #include "widgets.h"
 #include <ctype.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,10 +17,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <glob.h>
-
-extern void update_workspace_display(AppState *w);
-extern gboolean update_widgets_idle(gpointer data);
-extern void fetch_brightness(AppState *w);
 
 char *hyprctl_request(const char *cmd);
 int check_fullscreen_on_monitor_with_data(int x, int y, const char *monitors, const char *clients);
@@ -282,7 +281,6 @@ void sync_initial_state(AppState *w) {
 
     w->app_list = g_app_info_get_all();
 
-    extern void fetch_brightness(AppState *w);
     fetch_brightness(w);
     pthread_mutex_lock(&w->mutex);
     w->sys_data.brightness_initialized = 1;
@@ -393,9 +391,6 @@ void handle_ipc_line(AppState *w, char *line) {
         g_idle_add_full(G_PRIORITY_HIGH_IDLE, (GSourceFunc)update_widgets_idle, w, NULL);
     }
 }
-
-#include "bar.h"
-#include <poll.h>
 
 void handle_ipc_line(AppState *w, char *line);
 

@@ -49,5 +49,6 @@ double slider_get_visual_min(GtkRange *range);
 void slider_set_visual_min(GtkRange *range, double visual_min);
 double slider_get_actual_value(GtkRange *range);
 double slider_get_display_value(GtkRange *range, double actual_val);
+void update_slider_minimum_state(GtkRange *range);
 
 #endif

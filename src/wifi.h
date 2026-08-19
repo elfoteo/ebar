@@ -16,7 +16,6 @@ typedef struct {
 
 void wifi_init(AppState *state);
 void wifi_cleanup(AppState *state);
-gboolean wifi_get_status(int *exists, int *enabled, int *connected, char *ssid, size_t ssid_len, int *strength);
 gboolean wifi_set_enabled(gboolean enabled);
 GPtrArray *wifi_list_networks(void);
 void wifi_connect(const char *ssid, const char *password);

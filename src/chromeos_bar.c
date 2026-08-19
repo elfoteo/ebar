@@ -1,9 +1,11 @@
 #include "chromeos_bar.h"
+#include "bar.h"
 #include "chromeos_launcher.h"
 #include "chromeos_menu.h"
 #include "chromeos_menu_internal.h"
 #include "gtk-layer-shell.h"
 #include "ipc.h"
+#include "util.h"
 #include "widgets.h"
 #include <stdio.h>
 #include <string.h>
@@ -110,28 +112,6 @@ void apply_chromeos_css(AppState *state) {
 			}
 		}
 	}
-}
-
-static void on_bar_window_destroy(GtkWidget *widget, gpointer data) {
-	(void)widget;
-	struct {
-		BarWindow *bw;
-		AppState *state;
-	} *ctx = data;
-	pthread_mutex_lock(&ctx->state->mutex);
-	ctx->state->bar_windows = g_list_remove(ctx->state->bar_windows, ctx->bw);
-	pthread_mutex_unlock(&ctx->state->mutex);
-	if (ctx->bw->menu_window) {
-		gtk_widget_destroy(ctx->bw->menu_window);
-	}
-	if (ctx->bw->launcher_window) {
-		gtk_widget_destroy(ctx->bw->launcher_window);
-	}
-	if (ctx->bw->popup_window) {
-		gtk_widget_destroy(ctx->bw->popup_window);
-	}
-	g_free(ctx->bw);
-	g_free(ctx);
 }
 
 /* ── ChromeOS tray update (called from update_widgets_idle) ──────────────── */
@@ -265,11 +245,7 @@ void chromeos_update_tray(AppState *w, BarWindow *bw, SystemData *d,
 /* ── ChromeOS bar window ──────────────────────────────────────────────────── */
 void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-	GdkScreen *screen = gdk_screen_get_default();
-	GdkVisual *visual = gdk_screen_get_rgba_visual(screen);
-	if (visual && gdk_screen_is_composited(screen))
-		gtk_widget_set_visual(win, visual);
-	gtk_widget_set_app_paintable(win, TRUE);
+	setup_transparent_window(win);
 
 	gtk_layer_init_for_window(GTK_WINDOW(win));
 	gtk_layer_set_monitor(GTK_WINDOW(win), monitor);
@@ -386,10 +362,6 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 
 	state->bar_windows = g_list_append(state->bar_windows, bw);
 
-	typedef struct {
-		BarWindow *bw;
-		AppState *state;
-	} BarDestroyCtx;
 	BarDestroyCtx *dctx = g_new0(BarDestroyCtx, 1);
 	dctx->bw = bw;
 	dctx->state = state;

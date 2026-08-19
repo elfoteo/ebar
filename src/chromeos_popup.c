@@ -4,30 +4,13 @@
 #include "gtk-layer-shell.h"
 #include "ipc.h"
 #include "pulse.h"
+#include "util.h"
 #include <gtk/gtk.h>
 #include <time.h>
 
 extern gboolean update_widgets_idle(gpointer data);
 
 /* ── Slider helpers (forwarded from chromeos_menu_internal.h) ────────────── */
-
-static void update_popup_slider_minimum_state(GtkRange *range) {
-	GtkStyleContext *scale_ctx = gtk_widget_get_style_context(GTK_WIDGET(range));
-	GtkWidget *icon = g_object_get_data(G_OBJECT(range), "slider-icon");
-	GtkStyleContext *icon_ctx = icon ? gtk_widget_get_style_context(icon) : NULL;
-	gboolean muted = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(range), "muted"));
-	gboolean minimum = (slider_get_actual_value(range) <= 0.5) || muted;
-
-	if (minimum) {
-		gtk_style_context_add_class(scale_ctx, "cb-menu-slider-minimum");
-		if (icon_ctx)
-			gtk_style_context_add_class(icon_ctx, "cb-menu-slider-icon-minimum");
-	} else {
-		gtk_style_context_remove_class(scale_ctx, "cb-menu-slider-minimum");
-		if (icon_ctx)
-			gtk_style_context_remove_class(icon_ctx, "cb-menu-slider-icon-minimum");
-	}
-}
 
 static void on_popup_scale_value_changed(GtkRange *range, gpointer data) {
 	(void)data;
@@ -37,7 +20,7 @@ static void on_popup_scale_value_changed(GtkRange *range, gpointer data) {
 		gtk_range_set_value(range, visual_min);
 		slider_set_updating(range, FALSE);
 	}
-	update_popup_slider_minimum_state(range);
+	update_slider_minimum_state(range);
 }
 
 static void on_popup_scale_size_allocate(GtkWidget *widget, GdkRectangle *allocation, gpointer data) {
@@ -82,7 +65,7 @@ static GtkWidget *create_popup_slider(const char *icon, double initial_val, GCal
 	g_signal_connect(scale, "size-allocate", G_CALLBACK(on_popup_scale_size_allocate), NULL);
 	if (on_changed)
 		g_signal_connect(scale, "value-changed", on_changed, user_data);
-	update_popup_slider_minimum_state(GTK_RANGE(scale));
+	update_slider_minimum_state(GTK_RANGE(scale));
 
 	gtk_container_add(GTK_CONTAINER(overlay), scale);
 	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), icon_lbl);
@@ -247,11 +230,7 @@ static void trigger_popup_generic(BarWindow *bw, int type, double val, const cha
 		gtk_widget_set_name(win, "ebar-passive-popup-window");
 		gtk_style_context_add_class(gtk_widget_get_style_context(win), "ebar-menu-window");
 
-		GdkScreen *screen = gdk_screen_get_default();
-		GdkVisual *visual = gdk_screen_get_rgba_visual(screen);
-		if (visual && gdk_screen_is_composited(screen))
-			gtk_widget_set_visual(win, visual);
-		gtk_widget_set_app_paintable(win, TRUE);
+		setup_transparent_window(win);
 
 		gtk_layer_init_for_window(GTK_WINDOW(win));
 		gtk_layer_set_monitor(GTK_WINDOW(win), bw->monitor);
@@ -321,7 +300,7 @@ static void trigger_popup_generic(BarWindow *bw, int type, double val, const cha
 		slider_set_updating(range, TRUE);
 		gtk_range_set_value(range, slider_get_display_value(range, val));
 		slider_set_updating(range, FALSE);
-		update_popup_slider_minimum_state(range);
+		update_slider_minimum_state(range);
 
 		if (type == POPUP_TYPE_VOLUME) {
 			GtkWidget *icon_lbl = g_object_get_data(G_OBJECT(range), "slider-icon");
@@ -369,13 +348,7 @@ gboolean trigger_volume_popup_idle(gpointer data) {
 	gboolean muted = state->sys_data.vol_muted;
 	pthread_mutex_unlock(&state->mutex);
 
-	const char *icon = "󰕾";
-	if (muted || v == 0)
-		icon = "󰝟";
-	else if (v <= 33)
-		icon = "󰕿";
-	else if (v <= 66)
-		icon = "󰖀";
+	const char *icon = get_volume_icon(v, muted);
 
 	trigger_popup_generic(bw, POPUP_TYPE_VOLUME, v, icon, muted);
 	return G_SOURCE_REMOVE;

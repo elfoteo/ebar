@@ -965,7 +965,7 @@ gboolean update_widgets_idle(gpointer data) {
 
 		if (time_changed || wifi_changed || bat_changed) {
 			if (bw->cb_sys_label) {
-				char sys_buf[64], t_buf[32];
+				char sys_buf[128], t_buf[32];
 				strftime(t_buf, sizeof(t_buf), "%-I:%M", &tmv);
 				const char *b_icon = get_battery_icon(d.bat_percent, d.bat_charging);
 
@@ -975,8 +975,11 @@ gboolean update_widgets_idle(gpointer data) {
 					else w_icon = "󰤯";
 				}
 
-				snprintf(sys_buf, sizeof(sys_buf), "%s %s  %s", t_buf, w_icon, b_icon);
-				gtk_label_set_text(GTK_LABEL(bw->cb_sys_label), sys_buf);
+				if (d.bat_percent >= 0 && d.bat_percent < 20 && !d.bat_charging)
+					snprintf(sys_buf, sizeof(sys_buf), "%s %s  <span foreground=\"orange\">%s</span>", t_buf, w_icon, b_icon);
+				else
+					snprintf(sys_buf, sizeof(sys_buf), "%s %s  %s", t_buf, w_icon, b_icon);
+				gtk_label_set_markup(GTK_LABEL(bw->cb_sys_label), sys_buf);
 			}
 		}
 

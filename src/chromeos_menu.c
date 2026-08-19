@@ -282,6 +282,13 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  font-family: \"JetBrainsMonoNerdFont\"; "
 	  "  font-size: 24px; "
 	  "} ");
+	A("popover.background { "
+	  "  background-color: #3c3c3c; "
+	  "  border-radius: 16px; "
+	  "} ");
+	A("popover.background separator { "
+	  "  background-color: rgba(255,255,255,0.12); "
+	  "} ");
 	A(".cb-menu-settings { "
 	  "  background-color: #3c3c3c; "
 	  "  color: #e8eaed; "

@@ -536,6 +536,26 @@ static void show_bluetooth_menu(BarWindow *bw, AppState *state) {
 	gtk_widget_show_all(bw->cb_menu_main_box);
 }
 
+static void power_menu_free_cmd(gpointer data, GClosure *closure) {
+	(void)closure;
+	g_free(data);
+}
+
+static void power_menu_on_option_clicked(GtkWidget *widget, gpointer data) {
+	(void)widget;
+	const char *cmd = (const char *)data;
+	g_spawn_command_line_async(cmd, NULL);
+}
+
+static void power_menu_on_btn_clicked(GtkWidget *widget, gpointer data) {
+	(void)widget;
+	GtkPopover *popover = GTK_POPOVER(data);
+	if (gtk_widget_get_visible(GTK_WIDGET(popover)))
+		gtk_popover_popdown(popover);
+	else
+		gtk_popover_popup(popover);
+}
+
 void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 	chromeos_menu_clear(bw);
 	g_object_set_data(G_OBJECT(bw->cb_menu_main_box), "current-view", "main");
@@ -636,7 +656,43 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 
 	GtkWidget *power_btn = gtk_button_new();
 	gtk_style_context_add_class(gtk_widget_get_style_context(power_btn), "cb-menu-power");
-	gtk_container_add(GTK_CONTAINER(power_btn), gtk_label_new("󰐥 "));
+	gtk_container_add(GTK_CONTAINER(power_btn), gtk_label_new("󰐥 "));
+
+	GtkWidget *power_popover = gtk_popover_new(power_btn);
+	gtk_popover_set_position(GTK_POPOVER(power_popover), GTK_POS_TOP);
+	gtk_popover_set_modal(GTK_POPOVER(power_popover), TRUE);
+
+	GtkWidget *power_menu_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+	gtk_container_add(GTK_CONTAINER(power_popover), power_menu_box);
+
+	struct {
+		const char *icon;
+		const char *label;
+		const char *cmd;
+	} power_opts[] = {
+		{"󰐥", "Shut down", "systemctl poweroff"},
+		{"󰤄", "Suspend", "systemctl suspend"},
+		{"󰜉", "Restart", "systemctl reboot"},
+	};
+	for (int i = 0; i < 3; i++) {
+		GtkWidget *opt = gtk_button_new();
+		gtk_style_context_add_class(gtk_widget_get_style_context(opt), "cb-menu-wifi-list-btn");
+		GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+		GtkWidget *icon = gtk_label_new(power_opts[i].icon);
+		gtk_style_context_add_class(gtk_widget_get_style_context(icon), "icon");
+		gtk_box_pack_start(GTK_BOX(row), icon, FALSE, FALSE, 0);
+		GtkWidget *lbl = gtk_label_new(power_opts[i].label);
+		gtk_widget_set_halign(lbl, GTK_ALIGN_START);
+		gtk_box_pack_start(GTK_BOX(row), lbl, TRUE, TRUE, 0);
+		gtk_container_add(GTK_CONTAINER(opt), row);
+
+		char *cmd = g_strdup(power_opts[i].cmd);
+		g_signal_connect_data(opt, "clicked", G_CALLBACK(power_menu_on_option_clicked), cmd, (GClosureNotify)power_menu_free_cmd, 0);
+		gtk_box_pack_start(GTK_BOX(power_menu_box), opt, FALSE, FALSE, 0);
+	}
+
+	g_signal_connect(power_btn, "clicked", G_CALLBACK(power_menu_on_btn_clicked), power_popover);
+	gtk_widget_show_all(power_menu_box);
 	gtk_box_pack_start(GTK_BOX(bottom_box), power_btn, FALSE, FALSE, 0);
 
 	char *bat_info = get_battery_info_str(&state->sys_data);

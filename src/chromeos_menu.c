@@ -25,6 +25,8 @@ void chromeos_menu_clear(BarWindow *bw) {
 	for (GList *l = children; l != NULL; l = l->next)
 		gtk_widget_destroy(GTK_WIDGET(l->data));
 	g_list_free(children);
+	bw->cb_menu_volume_slider = NULL;
+	bw->cb_menu_brightness_slider = NULL;
 }
 
 GtkWidget *chromeos_menu_create_header_back_button(void) {

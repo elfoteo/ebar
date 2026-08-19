@@ -2,6 +2,7 @@
 #include "chromeos_menu.h"
 #include "chromeos_menu_internal.h"
 #include "ipc.h"
+#include "util.h"
 #include "widgets.h"
 #include <ctype.h>
 #include <librsvg/rsvg.h>
@@ -137,25 +138,6 @@ static void free_keyboard_layout_ctx(gpointer data, GClosure *closure) {
 static void free_bluetooth_device_ctx(gpointer data, GClosure *closure) {
 	(void)closure;
 	g_free(data);
-}
-
-static int json_str(const char *haystack, const char *key, char *out, size_t outsz) {
-	const char *p = strstr(haystack, key);
-	if (!p)
-		return 0;
-	p += strlen(key);
-	const char *q1 = strchr(p, '"');
-	if (!q1)
-		return 0;
-	const char *q2 = strchr(q1 + 1, '"');
-	if (!q2)
-		return 0;
-	size_t len = (size_t)(q2 - q1 - 1);
-	if (len >= outsz)
-		len = outsz - 1;
-	memcpy(out, q1 + 1, len);
-	out[len] = '\0';
-	return 1;
 }
 
 static char *layout_code_label(const char *layout) {

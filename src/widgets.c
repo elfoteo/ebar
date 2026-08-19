@@ -1,16 +1,13 @@
 #include "widgets.h"
-#include "chromeos_menu.h"
-#include "chromeos_menu_internal.h"
+#include "chromeos_bar.h"
 #include "chromeos_popup.h"
 #include "gtk-layer-shell.h"
+#include "nightlight.h"
 #include "pulse.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
 
 static gboolean on_btn_enter(GtkWidget *widget, GdkEventCrossing *event, gpointer data) {
 	(void)data;
@@ -252,169 +249,8 @@ GtkWidget *widget_volume(BarWindow *bw, AppState *state) {
 	return evbox;
 }
 
-/* ── Nightlight helpers ─────────────────────────────────────────────────── */
-
-static void nightlight_save_state(int active, int level) {
-	FILE *f = fopen("/tmp/ebar_nightlight", "w");
-	if (f) {
-		fprintf(f, "%d %d", active, level);
-		fclose(f);
-	}
-}
-
-static int nightlight_load_state(int *active) {
-	FILE *f = fopen("/tmp/ebar_nightlight", "r");
-	if (!f) {
-		if (active) *active = 0;
-		return 0;
-	}
-	int act = 0;
-	int level = 0;
-	if (fscanf(f, "%d %d", &act, &level) != 2) {
-		fseek(f, 0, SEEK_SET);
-		if (fscanf(f, "%d", &level) != 1) {
-			level = 0;
-		}
-		act = 0;
-	}
-	if (active) *active = act;
-	fclose(f);
-	return level;
-}
-
-/* Send a command to the hyprsunset IPC socket.
- * Returns 0 on success, -1 on failure (socket not found / connect error). */
-static int nightlight_ipc(const char *cmd) {
-	const char *sig = getenv("HYPRLAND_INSTANCE_SIGNATURE");
-	if (!sig)
-		return -1;
-	const char *run = getenv("XDG_RUNTIME_DIR");
-	if (!run)
-		run = "/run/user/1000";
-
-	char path[256];
-	snprintf(path, sizeof(path), "%s/hypr/%s/.hyprsunset.sock", run, sig);
-
-	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (fd < 0)
-		return -1;
-
-	struct sockaddr_un addr;
-	memset(&addr, 0, sizeof(addr));
-	addr.sun_family = AF_UNIX;
-	strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
-
-	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		close(fd);
-		return -1;
-	}
-	/* Send command + newline */
-	char msg[128];
-	int len = snprintf(msg, sizeof(msg), "%s\n", cmd);
-	write(fd, msg, len);
-	/* Drain response */
-	char buf[64];
-	read(fd, buf, sizeof(buf));
-	close(fd);
-	return 0;
-}
-
-/* Apply temperature + gamma via two IPC calls based on current level. */
-gboolean nightlight_retry_cb(gpointer data);
-
-static void nightlight_apply(AppState *state) {
-	pthread_mutex_lock(&state->mutex);
-	int level = state->sys_data.nightlight_level;
-	double t_max = state->config.nightlight.temp_max;
-	double t_min = state->config.nightlight.temp_min;
-	double g_max = state->config.nightlight.gamma_max;
-	double g_min = state->config.nightlight.gamma_min;
-	char curve[16];
-	strncpy(curve, state->config.nightlight.curve, sizeof(curve) - 1);
-	pthread_mutex_unlock(&state->mutex);
-
-	double t = level / 100.0;
-	if (strcmp(curve, "linear") != 0)
-		t = t * t * (3.0 - 2.0 * t); /* smoothstep */
-
-	int temp = (int)(t_max - (t_max - t_min) * t);
-	double gamma = g_max - (g_max - g_min) * t;
-
-	char cmd[64];
-	snprintf(cmd, sizeof(cmd), "temperature %d", temp);
-	int ok1 = nightlight_ipc(cmd);
-	snprintf(cmd, sizeof(cmd), "gamma %.0f", gamma);
-	int ok2 = nightlight_ipc(cmd);
-
-	int err = (ok1 < 0 || ok2 < 0) ? 1 : 0;
-	pthread_mutex_lock(&state->mutex);
-	state->sys_data.nightlight_error = err;
-	if (err) {
-		state->sys_data.nightlight_retrying = 1;
-		if (state->nightlight_retry_tag == 0) {
-			state->nightlight_retries = 0;
-			state->nightlight_retry_tag = g_timeout_add(2000, (GSourceFunc)nightlight_retry_cb, state);
-		}
-	} else {
-		state->sys_data.nightlight_retrying = 0;
-		state->nightlight_retries = 0;
-	}
-	pthread_mutex_unlock(&state->mutex);
-}
-
-static void nightlight_reset(AppState *state) {
-	int ok1 = nightlight_ipc("temperature 6500");
-	int ok2 = nightlight_ipc("gamma 100");
-	int err = (ok1 < 0 || ok2 < 0) ? 1 : 0;
-	pthread_mutex_lock(&state->mutex);
-	state->sys_data.nightlight_error = err;
-	if (err) {
-		state->sys_data.nightlight_retrying = 1;
-		if (state->nightlight_retry_tag == 0) {
-			state->nightlight_retries = 0;
-			state->nightlight_retry_tag = g_timeout_add(2000, (GSourceFunc)nightlight_retry_cb, state);
-		}
-	} else {
-		state->sys_data.nightlight_retrying = 0;
-		state->nightlight_retries = 0;
-	}
-	pthread_mutex_unlock(&state->mutex);
-}
-
-gboolean nightlight_retry_cb(gpointer data) {
-	AppState *state = (AppState *)data;
-
-	pthread_mutex_lock(&state->mutex);
-	int active = state->sys_data.nightlight_on;
-	pthread_mutex_unlock(&state->mutex);
-
-	if (active)
-		nightlight_apply(state);
-	else
-		nightlight_reset(state);
-
-	pthread_mutex_lock(&state->mutex);
-	int err = state->sys_data.nightlight_error;
-	if (!err) {
-		state->sys_data.nightlight_retrying = 0;
-		state->nightlight_retry_tag = 0;
-		state->nightlight_retries = 0;
-		pthread_mutex_unlock(&state->mutex);
-		update_widgets_idle(state);
-		return G_SOURCE_REMOVE;
-	}
-	state->nightlight_retries++;
-	if (state->nightlight_retries >= 5) {
-		state->sys_data.nightlight_retrying = 0;
-		state->nightlight_retry_tag = 0;
-		state->nightlight_retries = 0;
-		pthread_mutex_unlock(&state->mutex);
-		update_widgets_idle(state);
-		return G_SOURCE_REMOVE;
-	}
-	pthread_mutex_unlock(&state->mutex);
-	return G_SOURCE_CONTINUE;
-}
+/* ── Nightlight ─────────────────────────────────────────────────────────── */
+/* Functions moved to nightlight.c */
 
 static gboolean on_brightness_scroll(GtkWidget *widget, GdkEventScroll *event, gpointer data) {
 	(void)widget;
@@ -646,24 +482,7 @@ GtkWidget *widget_nightlight(BarWindow *bw, AppState *state) {
 	return evbox;
 }
 
-void nightlight_init(AppState *state) {
-	int active = 0;
-	int level = nightlight_load_state(&active);
-	if (level <= 0)
-		level = 15;
-
-	pthread_mutex_lock(&state->mutex);
-	state->sys_data.nightlight_last_level = level;
-	state->sys_data.nightlight_on = active;
-	state->sys_data.nightlight_level = active ? level : 0;
-	pthread_mutex_unlock(&state->mutex);
-
-	if (active) {
-		nightlight_apply(state);
-	} else {
-		nightlight_reset(state);
-	}
-}
+/* nightlight_init moved to nightlight.c */
 
 static void on_launcher_clicked(GtkWidget *widget, gpointer data) {
 	(void)widget;
@@ -856,7 +675,7 @@ const char *get_wifi_icon(int q) {
 	return "󰤨";
 }
 
-static const char *get_battery_icon(int cap, int charging) {
+const char *get_battery_icon(int cap, int charging) {
 	/* Index 0 = ≤10%, index 9 = 91-100% */
 	static const char *discharging[10] = {
 		"󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹",
@@ -923,7 +742,7 @@ gboolean update_widgets_idle(gpointer data) {
 	}
 
 	struct tm tmv = *localtime(&now);
-	char tstr[64], dstr[64], cb_dstr[64];
+	char tstr[64], dstr[64];
 
 	// Check if time components changed (hour/minute/date)
 	int time_changed = (now / 60 != last_time / 60);
@@ -932,7 +751,6 @@ gboolean update_widgets_idle(gpointer data) {
 	if (time_changed) {
 		strftime(tstr, sizeof(tstr), w->config.clock.time_format, &tmv);
 		strftime(dstr, sizeof(dstr), w->config.clock.date_format, &tmv);
-		strftime(cb_dstr, sizeof(cb_dstr), "%b %-d", &tmv);
 	}
 
 	int bat_changed = (d.bat_percent != last_d.bat_percent || d.bat_charging != last_d.bat_charging ||
@@ -959,86 +777,6 @@ gboolean update_widgets_idle(gpointer data) {
 				gtk_label_set_text(GTK_LABEL(bw->clock_time_label), tstr);
 			if (bw->clock_date_label)
 				gtk_label_set_text(GTK_LABEL(bw->clock_date_label), dstr);
-			if (bw->cb_date_label)
-				gtk_label_set_text(GTK_LABEL(bw->cb_date_label), cb_dstr);
-		}
-
-		if (time_changed || wifi_changed || bat_changed) {
-			if (bw->cb_sys_label) {
-				char sys_buf[128], t_buf[32];
-				strftime(t_buf, sizeof(t_buf), "%-I:%M", &tmv);
-				const char *b_icon = get_battery_icon(d.bat_percent, d.bat_charging);
-
-				const char *w_icon = "󰤮";
-				if (d.wifi_enabled && d.wifi_adapter_exists) {
-					if (d.wifi_connected) w_icon = get_wifi_icon(d.wifi_strength);
-					else w_icon = "󰤯";
-				}
-
-				if (d.bat_percent >= 0 && d.bat_percent < 20 && !d.bat_charging)
-					snprintf(sys_buf, sizeof(sys_buf), "%s %s  <span foreground=\"orange\">%s</span>", t_buf, w_icon, b_icon);
-				else
-					snprintf(sys_buf, sizeof(sys_buf), "%s %s  %s", t_buf, w_icon, b_icon);
-				gtk_label_set_markup(GTK_LABEL(bw->cb_sys_label), sys_buf);
-			}
-		}
-
-		if (kb_changed) {
-			if (bw->cb_layout_label && d.kb_layout[0])
-				gtk_label_set_text(GTK_LABEL(bw->cb_layout_label), d.kb_layout);
-			if (bw->cb_menu_kb_label && GTK_IS_LABEL(bw->cb_menu_kb_label) && d.kb_layout[0])
-				gtk_label_set_text(GTK_LABEL(bw->cb_menu_kb_label), d.kb_layout);
-		}
-
-		if (bat_changed) {
-			if (bw->cb_menu_bat_label && GTK_IS_LABEL(bw->cb_menu_bat_label)) {
-				char bat_buf[128];
-				if (d.bat_percent >= 0) {
-					snprintf(bat_buf, sizeof(bat_buf), "%d%% - %s", d.bat_percent,
-							 d.bat_time_remaining[0] ? d.bat_time_remaining : (d.bat_charging ? "Charging" : "Discharging"));
-				} else {
-					snprintf(bat_buf, sizeof(bat_buf), "Battery: N/A");
-				}
-				gtk_label_set_text(GTK_LABEL(bw->cb_menu_bat_label), bat_buf);
-			}
-		}
-
-		if (wifi_changed) {
-			const char *w_icon = "󰤮"; /* Off / No Adapter */
-			const char *w_subtitle = "Off";
-			int active = 0;
-			int pill_sensitive = 1;
-			int arrow_sensitive = 0;
-
-			if (!d.wifi_adapter_exists) {
-				w_subtitle = "No adapter";
-				pill_sensitive = 0;
-			} else {
-				if (d.wifi_enabled) {
-					active = 1;
-					arrow_sensitive = 1;
-					if (d.wifi_connected) {
-						w_icon = get_wifi_icon(d.wifi_strength);
-						w_subtitle = d.wifi_ssid[0] ? d.wifi_ssid : "Connected";
-					} else {
-						w_icon = "󰤯"; /* Disconnected (outline) */
-						w_subtitle = "Disconnected";
-					}
-				}
-			}
-
-			if (bw->cb_menu_wifi_pill && GTK_IS_WIDGET(bw->cb_menu_wifi_pill)) {
-				GtkStyleContext *ctx = gtk_widget_get_style_context(bw->cb_menu_wifi_pill);
-				if (active) gtk_style_context_add_class(ctx, "cb-menu-pill-active");
-				else gtk_style_context_remove_class(ctx, "cb-menu-pill-active");
-
-				gtk_widget_set_sensitive(bw->cb_menu_wifi_pill, pill_sensitive);
-				if (bw->cb_menu_wifi_arrow) gtk_widget_set_sensitive(bw->cb_menu_wifi_arrow, arrow_sensitive);
-				if (bw->cb_menu_wifi_subtitle && GTK_IS_LABEL(bw->cb_menu_wifi_subtitle))
-					gtk_label_set_text(GTK_LABEL(bw->cb_menu_wifi_subtitle), w_subtitle);
-				if (bw->cb_menu_wifi_icon && GTK_IS_LABEL(bw->cb_menu_wifi_icon))
-					gtk_label_set_text(GTK_LABEL(bw->cb_menu_wifi_icon), w_icon);
-			}
 		}
 
 		if (metrics_changed) {
@@ -1071,41 +809,11 @@ gboolean update_widgets_idle(gpointer data) {
 			}
 			if (bw->volume_ring)
 				gtk_widget_queue_draw(bw->volume_ring);
-
-			if (bw->popup_window && gtk_widget_get_visible(bw->popup_window)) {
-				trigger_volume_popup_idle(bw);
-			}
-			if (bw->cb_menu_volume_slider && GTK_IS_RANGE(bw->cb_menu_volume_slider)) {
-				GtkRange *range = GTK_RANGE(bw->cb_menu_volume_slider);
-				GtkStyleContext *scale_ctx = gtk_widget_get_style_context(GTK_WIDGET(range));
-				if (d.vol_muted) {
-					gtk_style_context_add_class(scale_ctx, "cb-menu-slider-muted");
-				} else {
-					gtk_style_context_remove_class(scale_ctx, "cb-menu-slider-muted");
-				}
-				if (!slider_is_updating(range) && (now - w->last_manual_vol_update > 1)) {
-					slider_set_updating(range, TRUE);
-					gtk_range_set_value(range, slider_get_display_value(range, d.visual_volume));
-					slider_set_updating(range, FALSE);
-				}
-			}
 		}
 
 		if (brightness_changed) {
 			if (bw->brightness_ring)
 				gtk_widget_queue_draw(bw->brightness_ring);
-
-			if (bw->popup_window && gtk_widget_get_visible(bw->popup_window)) {
-				trigger_brightness_popup_idle(bw);
-			}
-			if (bw->cb_menu_brightness_slider && GTK_IS_RANGE(bw->cb_menu_brightness_slider)) {
-				GtkRange *range = GTK_RANGE(bw->cb_menu_brightness_slider);
-				if (!slider_is_updating(range) && (now - w->last_manual_bright_update > 1)) {
-					slider_set_updating(range, TRUE);
-					gtk_range_set_value(range, slider_get_display_value(range, d.visual_brightness));
-					slider_set_updating(range, FALSE);
-				}
-			}
 		}
 
 		if (nightlight_changed) {
@@ -1159,6 +867,12 @@ gboolean update_widgets_idle(gpointer data) {
 				gtk_widget_set_visible(bw->media_artist_label, show_artist);
 			}
 		}
+
+		/* ChromeOS tray labels, popups and menu sliders */
+		chromeos_update_tray(w, bw, &d,
+							 time_changed, wifi_changed, bat_changed,
+							 kb_changed, vol_changed, brightness_changed,
+							 now, &tmv);
 	}
 
 	int ws_changed = (active_workspace != last_active_ws || memcmp(ws_win_count, last_ws_count, sizeof(ws_win_count)) != 0);

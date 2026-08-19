@@ -6,6 +6,7 @@
 #include "ipc.h"
 #include "media.h"
 #include "metrics.h"
+#include "nightlight.h"
 #include "pulse.h"
 #include "types.h"
 #include "widgets.h"

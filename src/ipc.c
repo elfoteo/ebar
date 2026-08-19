@@ -3,6 +3,7 @@
 #include "chromeos_launcher.h"
 #include "chromeos_menu.h"
 #include "chromeos_popup.h"
+#include "util.h"
 #include "widgets.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -152,21 +153,6 @@ int check_fullscreen_on_monitor(int x, int y) {
 }
 
 /* ── keyboard layout helpers ───────────────────────────────────────────────── */
-/* Extract a JSON string value after a given key (simple, no full JSON parser) */
-static int json_str(const char *haystack, const char *key, char *out, size_t outsz) {
-    const char *p = strstr(haystack, key);
-    if (!p) return 0;
-    p += strlen(key);
-    const char *q1 = strchr(p, '"');
-    if (!q1) return 0;
-    const char *q2 = strchr(q1 + 1, '"');
-    if (!q2) return 0;
-    size_t len = (size_t)(q2 - q1 - 1);
-    if (len >= outsz) len = outsz - 1;
-    memcpy(out, q1 + 1, len);
-    out[len] = '\0';
-    return 1;
-}
 
 /* Uppercase in-place */
 static void str_upper(char *s) {

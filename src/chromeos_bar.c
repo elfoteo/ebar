@@ -1,6 +1,7 @@
 #include "chromeos_bar.h"
 #include "chromeos_launcher.h"
 #include "chromeos_menu.h"
+#include "chromeos_menu_internal.h"
 #include "gtk-layer-shell.h"
 #include "ipc.h"
 #include "widgets.h"
@@ -131,6 +132,134 @@ static void on_bar_window_destroy(GtkWidget *widget, gpointer data) {
 	}
 	g_free(ctx->bw);
 	g_free(ctx);
+}
+
+/* ── ChromeOS tray update (called from update_widgets_idle) ──────────────── */
+
+void chromeos_update_tray(AppState *w, BarWindow *bw, SystemData *d,
+						  int time_changed, int wifi_changed, int bat_changed,
+						  int kb_changed, int vol_changed, int brightness_changed,
+						  time_t now, struct tm *tmv) {
+
+	if (time_changed) {
+		if (bw->cb_date_label) {
+			char cb_dstr[64];
+			strftime(cb_dstr, sizeof(cb_dstr), "%b %-d", tmv);
+			gtk_label_set_text(GTK_LABEL(bw->cb_date_label), cb_dstr);
+		}
+	}
+
+	if (time_changed || wifi_changed || bat_changed) {
+		if (bw->cb_sys_label) {
+			char sys_buf[128], t_buf[32];
+			strftime(t_buf, sizeof(t_buf), "%-I:%M", tmv);
+			const char *b_icon = get_battery_icon(d->bat_percent, d->bat_charging);
+
+			const char *w_icon = "󰤮";
+			if (d->wifi_enabled && d->wifi_adapter_exists) {
+				if (d->wifi_connected) w_icon = get_wifi_icon(d->wifi_strength);
+				else w_icon = "󰤯";
+			}
+
+			if (d->bat_percent >= 0 && d->bat_percent < 20 && !d->bat_charging)
+				snprintf(sys_buf, sizeof(sys_buf), "%s %s  <span foreground=\"orange\">%s</span>", t_buf, w_icon, b_icon);
+			else
+				snprintf(sys_buf, sizeof(sys_buf), "%s %s  %s", t_buf, w_icon, b_icon);
+			gtk_label_set_markup(GTK_LABEL(bw->cb_sys_label), sys_buf);
+		}
+	}
+
+	if (kb_changed) {
+		if (bw->cb_layout_label && d->kb_layout[0])
+			gtk_label_set_text(GTK_LABEL(bw->cb_layout_label), d->kb_layout);
+		if (bw->cb_menu_kb_label && GTK_IS_LABEL(bw->cb_menu_kb_label) && d->kb_layout[0])
+			gtk_label_set_text(GTK_LABEL(bw->cb_menu_kb_label), d->kb_layout);
+	}
+
+	if (bat_changed) {
+		if (bw->cb_menu_bat_label && GTK_IS_LABEL(bw->cb_menu_bat_label)) {
+			char bat_buf[128];
+			if (d->bat_percent >= 0) {
+				snprintf(bat_buf, sizeof(bat_buf), "%d%% - %s", d->bat_percent,
+						 d->bat_time_remaining[0] ? d->bat_time_remaining : (d->bat_charging ? "Charging" : "Discharging"));
+			} else {
+				snprintf(bat_buf, sizeof(bat_buf), "Battery: N/A");
+			}
+			gtk_label_set_text(GTK_LABEL(bw->cb_menu_bat_label), bat_buf);
+		}
+	}
+
+	if (wifi_changed) {
+		const char *w_icon = "󰤮";
+		const char *w_subtitle = "Off";
+		int active = 0;
+		int pill_sensitive = 1;
+		int arrow_sensitive = 0;
+
+		if (!d->wifi_adapter_exists) {
+			w_subtitle = "No adapter";
+			pill_sensitive = 0;
+		} else {
+			if (d->wifi_enabled) {
+				active = 1;
+				arrow_sensitive = 1;
+				if (d->wifi_connected) {
+					w_icon = get_wifi_icon(d->wifi_strength);
+					w_subtitle = d->wifi_ssid[0] ? d->wifi_ssid : "Connected";
+				} else {
+					w_icon = "󰤯";
+					w_subtitle = "Disconnected";
+				}
+			}
+		}
+
+		if (bw->cb_menu_wifi_pill && GTK_IS_WIDGET(bw->cb_menu_wifi_pill)) {
+			GtkStyleContext *ctx = gtk_widget_get_style_context(bw->cb_menu_wifi_pill);
+			if (active) gtk_style_context_add_class(ctx, "cb-menu-pill-active");
+			else gtk_style_context_remove_class(ctx, "cb-menu-pill-active");
+
+			gtk_widget_set_sensitive(bw->cb_menu_wifi_pill, pill_sensitive);
+			if (bw->cb_menu_wifi_arrow) gtk_widget_set_sensitive(bw->cb_menu_wifi_arrow, arrow_sensitive);
+			if (bw->cb_menu_wifi_subtitle && GTK_IS_LABEL(bw->cb_menu_wifi_subtitle))
+				gtk_label_set_text(GTK_LABEL(bw->cb_menu_wifi_subtitle), w_subtitle);
+			if (bw->cb_menu_wifi_icon && GTK_IS_LABEL(bw->cb_menu_wifi_icon))
+				gtk_label_set_text(GTK_LABEL(bw->cb_menu_wifi_icon), w_icon);
+		}
+	}
+
+	if (vol_changed) {
+		if (bw->popup_window && gtk_widget_get_visible(bw->popup_window)) {
+			trigger_volume_popup_idle(bw);
+		}
+		if (bw->cb_menu_volume_slider && GTK_IS_RANGE(bw->cb_menu_volume_slider)) {
+			GtkRange *range = GTK_RANGE(bw->cb_menu_volume_slider);
+			GtkStyleContext *scale_ctx = gtk_widget_get_style_context(GTK_WIDGET(range));
+			if (d->vol_muted) {
+				gtk_style_context_add_class(scale_ctx, "cb-menu-slider-muted");
+			} else {
+				gtk_style_context_remove_class(scale_ctx, "cb-menu-slider-muted");
+			}
+			if (!slider_is_updating(range) && (now - w->last_manual_vol_update > 1)) {
+				slider_set_updating(range, TRUE);
+				gtk_range_set_value(range, slider_get_display_value(range, d->visual_volume));
+				slider_set_updating(range, FALSE);
+			}
+		}
+	}
+
+	if (brightness_changed) {
+		if (bw->popup_window && gtk_widget_get_visible(bw->popup_window)) {
+			trigger_brightness_popup_idle(bw);
+		}
+		if (bw->cb_menu_brightness_slider && GTK_IS_RANGE(bw->cb_menu_brightness_slider)) {
+			GtkRange *range = GTK_RANGE(bw->cb_menu_brightness_slider);
+			if (!slider_is_updating(range) && (now - w->last_manual_bright_update > 1)) {
+				slider_set_updating(range, TRUE);
+				gtk_range_set_value(range, slider_get_display_value(range, d->visual_brightness));
+				slider_set_updating(range, FALSE);
+			}
+		}
+	}
 }
 
 /* ── ChromeOS bar window ──────────────────────────────────────────────────── */

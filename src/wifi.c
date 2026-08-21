@@ -1,11 +1,15 @@
 #include "wifi.h"
-#include "chromeos_menu_internal.h"
+#include "widgets.h"
 #include <NetworkManager.h>
 #include <string.h>
 
-extern gboolean update_widgets_idle(gpointer data);
+static WifiChangedCallback wifi_changed_cb = NULL;
 
-static NMClient *global_nm_client = NULL;
+void wifi_set_changed_callback(WifiChangedCallback cb) {
+	wifi_changed_cb = cb;
+}
+
+static NMClient *wifi_nm_client = NULL;
 
 static NMDeviceWifi *find_wifi_device(NMClient *client) {
 	if (!client) return NULL;
@@ -99,7 +103,7 @@ void wifi_network_free(WifiNetwork *network) {
 }
 
 static void update_wifi_data(AppState *state) {
-	NMClient *client = global_nm_client;
+	NMClient *client = wifi_nm_client;
 	if (!client)
 		return;
 
@@ -140,8 +144,9 @@ static void update_wifi_data(AppState *state) {
 
 	g_idle_add(update_widgets_idle, state);
 
-	/* Refresh WiFi menu if open */
-	chromeos_menu_refresh_wifi_list_if_open(state);
+	/* Notify registered listener (e.g. ChromeOS menu) */
+	if (wifi_changed_cb)
+		wifi_changed_cb(state);
 }
 
 static void on_nm_event(GObject *object, GParamSpec *pspec, gpointer user_data) {
@@ -167,23 +172,23 @@ static void on_device_added(NMClient *client, NMDevice *device, gpointer user_da
 
 void wifi_init(AppState *state) {
 	GError *error = NULL;
-	if (!global_nm_client) {
-		global_nm_client = nm_client_new(NULL, &error);
+	if (!wifi_nm_client) {
+		wifi_nm_client = nm_client_new(NULL, &error);
 	}
-	if (!global_nm_client) {
+	if (!wifi_nm_client) {
 		g_warning("Failed to initialize NetworkManager client: %s", error ? error->message : "unknown error");
 		g_clear_error(&error);
 		return;
 	}
-	state->nm_client = global_nm_client;
+	state->nm_client = wifi_nm_client;
 
-	g_signal_connect(global_nm_client, "notify::wireless-enabled", G_CALLBACK(on_nm_event), state);
-	g_signal_connect(global_nm_client, "notify::wireless-hardware-enabled", G_CALLBACK(on_nm_event), state);
-	g_signal_connect(global_nm_client, "notify::state", G_CALLBACK(on_nm_event), state);
-	g_signal_connect(global_nm_client, "device-added", G_CALLBACK(on_device_added), state);
-	g_signal_connect(global_nm_client, "device-removed", G_CALLBACK(on_nm_event), state);
+	g_signal_connect(wifi_nm_client, "notify::wireless-enabled", G_CALLBACK(on_nm_event), state);
+	g_signal_connect(wifi_nm_client, "notify::wireless-hardware-enabled", G_CALLBACK(on_nm_event), state);
+	g_signal_connect(wifi_nm_client, "notify::state", G_CALLBACK(on_nm_event), state);
+	g_signal_connect(wifi_nm_client, "device-added", G_CALLBACK(on_device_added), state);
+	g_signal_connect(wifi_nm_client, "device-removed", G_CALLBACK(on_nm_event), state);
 
-	const GPtrArray *devices = nm_client_get_devices(global_nm_client);
+	const GPtrArray *devices = nm_client_get_devices(wifi_nm_client);
 	for (guint i = 0; devices && i < devices->len; i++) {
 		NMDevice *device = g_ptr_array_index(devices, i);
 		if (NM_IS_DEVICE_WIFI(device)) {
@@ -203,9 +208,9 @@ void wifi_init(AppState *state) {
 
 void wifi_cleanup(AppState *state) {
 	(void)state;
-	if (global_nm_client) {
-		g_object_unref(global_nm_client);
-		global_nm_client = NULL;
+	if (wifi_nm_client) {
+		g_object_unref(wifi_nm_client);
+		wifi_nm_client = NULL;
 	}
 }
 
@@ -220,7 +225,7 @@ static void set_property_cb(GObject *object, GAsyncResult *result, gpointer user
 }
 
 gboolean wifi_set_enabled(gboolean enabled) {
-	NMClient *client = global_nm_client;
+	NMClient *client = wifi_nm_client;
 	if (!client)
 		return FALSE;
 
@@ -231,7 +236,7 @@ gboolean wifi_set_enabled(gboolean enabled) {
 
 GPtrArray *wifi_list_networks(void) {
 	GPtrArray *networks = g_ptr_array_new_with_free_func((GDestroyNotify)wifi_network_free);
-	NMClient *client = global_nm_client;
+	NMClient *client = wifi_nm_client;
 	if (!client)
 		return networks;
 
@@ -294,7 +299,7 @@ void wifi_connect(const char *ssid, const char *password) {
 	if (!ssid || ssid[0] == '\0')
 		return;
 
-	NMClient *client = global_nm_client;
+	NMClient *client = wifi_nm_client;
 	if (!client)
 		return;
 

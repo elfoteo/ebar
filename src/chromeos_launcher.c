@@ -171,11 +171,7 @@ static void apply_launcher_css(AppState *state) {
 			 "} ",
 			 state->config.chromeos.accent_color);
 
-	GtkCssProvider *provider = gtk_css_provider_new();
-	gtk_css_provider_load_from_data(provider, css, -1, NULL);
-	gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(provider),
-											  GTK_STYLE_PROVIDER_PRIORITY_USER);
-	g_object_unref(provider);
+	apply_css_from_string(css, GTK_STYLE_PROVIDER_PRIORITY_USER);
 }
 
 static void on_launcher_destroy(GtkWidget *widget, gpointer data) {
@@ -222,10 +218,7 @@ static GtkWidget *create_launcher_window(BarWindow *bw, AppState *state) {
 	g_signal_connect(win, "destroy", G_CALLBACK(on_launcher_destroy), bw);
 
 	/* Hyprland bug bypass: force RGBX to prevent unintended transparency/blur issues */
-	char *res = hyprctl_request("keyword windowrule forcergbx,title:^(ebar-launcher)$");
-	if (res) free(res);
-	res = hyprctl_request("keyword layerrule forcergbx,ebar-launcher");
-	if (res) free(res);
+	apply_forcergbx_bypass("ebar-launcher", "ebar-launcher");
 
 	GtkWidget *bg = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 	gtk_widget_set_name(bg, "launcher-bg");

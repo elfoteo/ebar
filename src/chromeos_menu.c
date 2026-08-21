@@ -33,6 +33,26 @@ GtkWidget *chromeos_menu_create_header_back_button(void) {
 	return back_btn;
 }
 
+GtkWidget *chromeos_menu_create_subpage_header(BarWindow *bw, AppState *state, const char *title) {
+	GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+	gtk_style_context_add_class(gtk_widget_get_style_context(header), "cb-menu-header");
+
+	GtkWidget *back_btn = chromeos_menu_create_header_back_button();
+	MenuCtx *ctx = g_new0(MenuCtx, 1);
+	ctx->bw = bw;
+	ctx->state = state;
+	g_signal_connect_data(back_btn, "clicked", G_CALLBACK(chromeos_menu_on_back_to_main_clicked), ctx,
+						  (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
+	gtk_box_pack_start(GTK_BOX(header), back_btn, FALSE, FALSE, 0);
+
+	GtkWidget *title_lbl = gtk_label_new(title);
+	gtk_style_context_add_class(gtk_widget_get_style_context(title_lbl), "cb-menu-header-title");
+	gtk_box_pack_start(GTK_BOX(header), title_lbl, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(bw->cb_menu_main_box), header, FALSE, FALSE, 0);
+
+	return header;
+}
+
 void chromeos_menu_ellipsize_label(GtkWidget *label, int max_width_chars) {
 	gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_END);
 	gtk_label_set_single_line_mode(GTK_LABEL(label), TRUE);
@@ -266,6 +286,27 @@ void chromeos_menu_apply_css(AppState *state) {
 	A(".cb-menu-slider slider { "
 	  "  all: unset; "
 	  "} ");
+	A(".cb-menu-led-toggle { "
+	  "  min-width: 48px; "
+	  "  min-height: 26px; "
+	  "} ");
+	A(".cb-menu-led-toggle switch { "
+	  "  background-color: #5f6368; "
+	  "  border-radius: 13px; "
+	  "  min-width: 48px; "
+	  "  min-height: 26px; "
+	  "  padding: 2px; "
+	  "} ");
+	A(".cb-menu-led-toggle switch:checked { "
+	  "  background-color: %s; "
+	  "} ",
+	  state->config.chromeos.accent_color);
+	A(".cb-menu-led-toggle slider { "
+	  "  background-color: #e8eaed; "
+	  "  border-radius: 11px; "
+	  "  min-width: 22px; "
+	  "  min-height: 22px; "
+	  "} ");
 	A(".cb-menu-bottom { "
 	  "  margin-top: 16px; "
 	  "} ");
@@ -431,10 +472,7 @@ void chromeos_menu_apply_css(AppState *state) {
 
 #undef A
 
-	GtkCssProvider *provider = gtk_css_provider_new();
-	gtk_css_provider_load_from_data(provider, css, -1, NULL);
-	gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(provider), GTK_STYLE_PROVIDER_PRIORITY_USER);
-	g_object_unref(provider);
+	apply_css_from_string(css, GTK_STYLE_PROVIDER_PRIORITY_USER);
 }
 
 static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
@@ -468,12 +506,7 @@ static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
 	gtk_layer_set_exclusive_zone(GTK_WINDOW(win), -1);
 
 /* Hyprland bug bypass: force RGBX to prevent unintended transparency/blur issues */
-	char *res = hyprctl_request("keyword windowrule forcergbx,title:^(ebar-menu)$");
-	if (res)
-		free(res);
-	res = hyprctl_request("keyword layerrule forcergbx,ebar-menu");
-	if (res)
-		free(res);
+	apply_forcergbx_bypass("ebar-menu", "ebar-menu");
 
 	gtk_window_set_decorated(GTK_WINDOW(win), FALSE);
 	gtk_window_set_resizable(GTK_WINDOW(win), FALSE);

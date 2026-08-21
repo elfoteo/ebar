@@ -6,13 +6,30 @@
 #include <stdio.h>
 #include <string.h>
 
-extern gboolean update_widgets_idle(gpointer data);
-extern gboolean trigger_volume_popup_idle(gpointer data);
+#define PA_EVENT_DEBOUNCE_MS 30
+
+/* userdata for one query chain (get_server_info -> get_sink_info_by_name) */
+typedef struct {
+	AppState *state;
+	unsigned int seq;
+} PulseQuery;
 
 static void pulse_sink_info_callback(pa_context *c, const pa_sink_info *i, int eol, void *userdata) {
-	AppState *state = (AppState *)userdata;
+	PulseQuery *q = (PulseQuery *)userdata;
+	AppState *state = q->state;
+	PulseState *ps = (PulseState *)state->pulse;
 	(void)c;
-	if (eol > 0 || !i)
+
+	if (eol > 0) {
+		g_free(q);
+		return;
+	}
+	if (!i)
+		return;
+
+	/* A newer query chain has been issued meanwhile: drop this stale response
+	 * instead of overwriting state with outdated volume/mute values. */
+	if (q->seq != ps->query_seq)
 		return;
 
 	pthread_mutex_lock(&state->mutex);
@@ -42,19 +59,56 @@ static void pulse_sink_info_callback(pa_context *c, const pa_sink_info *i, int e
 }
 
 static void pulse_server_info_callback(pa_context *c, const pa_server_info *i, void *userdata) {
-	AppState *state = (AppState *)userdata;
-	if (!i)
+	PulseQuery *q = (PulseQuery *)userdata;
+	AppState *state = q->state;
+
+	if (!i) {
+		g_free(q);
 		return;
+	}
 
 	PulseState *ps = (PulseState *)state->pulse;
 	strncpy(ps->default_sink_name, i->default_sink_name, sizeof(ps->default_sink_name) - 1);
 	ps->default_sink_name[sizeof(ps->default_sink_name) - 1] = '\0';
 
-	pa_context_get_sink_info_by_name(c, i->default_sink_name, pulse_sink_info_callback, state);
+	pa_context_get_sink_info_by_name(c, i->default_sink_name, pulse_sink_info_callback, q);
+}
+
+/* Issue a fresh query chain; bumps the sequence so any in-flight response
+ * from a previous chain is dropped as stale. */
+static void pulse_issue_query(AppState *state) {
+	PulseState *ps = (PulseState *)state->pulse;
+	if (!ps || !ps->context)
+		return;
+	if (pa_context_get_state((pa_context *)ps->context) != PA_CONTEXT_READY)
+		return;
+
+	PulseQuery *q = g_new(PulseQuery, 1);
+	q->state = state;
+	q->seq = ++ps->query_seq;
+	pa_context_get_server_info((pa_context *)ps->context, pulse_server_info_callback, q);
+}
+
+static gboolean pulse_debounced_query(gpointer data) {
+	AppState *state = (AppState *)data;
+	PulseState *ps = (PulseState *)state->pulse;
+	ps->debounce_id = 0;
+	pulse_issue_query(state);
+	return G_SOURCE_REMOVE;
+}
+
+/* Coalesce subscription event storms (a single wpctl/pactl command emits
+ * several sink events) into one query after a short quiet window. */
+static void pulse_schedule_query(AppState *state) {
+	PulseState *ps = (PulseState *)state->pulse;
+	if (!ps || ps->debounce_id)
+		return;
+	ps->debounce_id = g_timeout_add(PA_EVENT_DEBOUNCE_MS, pulse_debounced_query, state);
 }
 
 static void pulse_subscription_callback(pa_context *c, pa_subscription_event_type_t t, uint32_t idx, void *userdata) {
 	AppState *state = (AppState *)userdata;
+	(void)c;
 	(void)idx;
 
 	/* On any sink event (NEW or CHANGE), re-query the DEFAULT sink volume,
@@ -63,10 +117,10 @@ static void pulse_subscription_callback(pa_context *c, pa_subscription_event_typ
 	switch (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) {
 	case PA_SUBSCRIPTION_EVENT_SINK:
 		if ((t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) != PA_SUBSCRIPTION_EVENT_REMOVE)
-			pa_context_get_server_info(c, pulse_server_info_callback, state);
+			pulse_schedule_query(state);
 		break;
 	case PA_SUBSCRIPTION_EVENT_SERVER:
-		pa_context_get_server_info(c, pulse_server_info_callback, state);
+		pulse_schedule_query(state);
 		break;
 	default:
 		break;
@@ -80,7 +134,7 @@ static void pulse_context_state_callback(pa_context *c, void *userdata) {
 	case PA_CONTEXT_READY:
 		pa_context_set_subscribe_callback(c, pulse_subscription_callback, state);
 		pa_context_subscribe(c, PA_SUBSCRIPTION_MASK_SINK | PA_SUBSCRIPTION_MASK_SERVER, NULL, NULL);
-		pa_context_get_server_info(c, pulse_server_info_callback, state);
+		pulse_issue_query(state);
 		break;
 	case PA_CONTEXT_FAILED:
 	case PA_CONTEXT_TERMINATED:
@@ -156,6 +210,10 @@ void pulse_cleanup(AppState *state) {
 	if (!state->pulse)
 		return;
 	PulseState *ps = (PulseState *)state->pulse;
+	if (ps->debounce_id) {
+		g_source_remove(ps->debounce_id);
+		ps->debounce_id = 0;
+	}
 	if (ps->context) {
 		pa_context_disconnect((pa_context *)ps->context);
 		pa_context_unref((pa_context *)ps->context);

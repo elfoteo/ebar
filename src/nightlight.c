@@ -1,4 +1,5 @@
 #include "nightlight.h"
+#include "constants.h"
 #include "widgets.h"
 #include <stdio.h>
 #include <string.h>
@@ -6,10 +7,25 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-extern gboolean update_widgets_idle(gpointer data);
+static void nightlight_handle_ipc_result(AppState *state, int ok1, int ok2) {
+	int err = (ok1 < 0 || ok2 < 0) ? 1 : 0;
+	pthread_mutex_lock(&state->mutex);
+	state->sys_data.nightlight_error = err;
+	if (err) {
+		state->sys_data.nightlight_retrying = 1;
+		if (state->nightlight_retry_tag == 0) {
+			state->nightlight_retries = 0;
+			state->nightlight_retry_tag = g_timeout_add(2000, (GSourceFunc)nightlight_retry_cb, state);
+		}
+	} else {
+		state->sys_data.nightlight_retrying = 0;
+		state->nightlight_retries = 0;
+	}
+	pthread_mutex_unlock(&state->mutex);
+}
 
 void nightlight_save_state(int active, int level) {
-	FILE *f = fopen("/tmp/ebar_nightlight", "w");
+	FILE *f = fopen(NIGHTLIGHT_STATE_FILE_PATH, "w");
 	if (f) {
 		fprintf(f, "%d %d", active, level);
 		fclose(f);
@@ -17,7 +33,7 @@ void nightlight_save_state(int active, int level) {
 }
 
 int nightlight_load_state(int *active) {
-	FILE *f = fopen("/tmp/ebar_nightlight", "r");
+	FILE *f = fopen(NIGHTLIGHT_STATE_FILE_PATH, "r");
 	if (!f) {
 		if (active)
 			*active = 0;
@@ -64,7 +80,10 @@ static int nightlight_ipc(const char *cmd) {
 	}
 	char msg[128];
 	int len = snprintf(msg, sizeof(msg), "%s\n", cmd);
-	write(fd, msg, len);
+	if (write(fd, msg, len) < 0) {
+		close(fd);
+		return -1;
+	}
 	char buf[64];
 	read(fd, buf, sizeof(buf));
 	close(fd);
@@ -96,39 +115,13 @@ void nightlight_apply(AppState *state) {
 	snprintf(cmd, sizeof(cmd), "gamma %.0f", gamma);
 	int ok2 = nightlight_ipc(cmd);
 
-	int err = (ok1 < 0 || ok2 < 0) ? 1 : 0;
-	pthread_mutex_lock(&state->mutex);
-	state->sys_data.nightlight_error = err;
-	if (err) {
-		state->sys_data.nightlight_retrying = 1;
-		if (state->nightlight_retry_tag == 0) {
-			state->nightlight_retries = 0;
-			state->nightlight_retry_tag = g_timeout_add(2000, (GSourceFunc)nightlight_retry_cb, state);
-		}
-	} else {
-		state->sys_data.nightlight_retrying = 0;
-		state->nightlight_retries = 0;
-	}
-	pthread_mutex_unlock(&state->mutex);
+	nightlight_handle_ipc_result(state, ok1, ok2);
 }
 
 void nightlight_reset(AppState *state) {
 	int ok1 = nightlight_ipc("temperature 6500");
 	int ok2 = nightlight_ipc("gamma 100");
-	int err = (ok1 < 0 || ok2 < 0) ? 1 : 0;
-	pthread_mutex_lock(&state->mutex);
-	state->sys_data.nightlight_error = err;
-	if (err) {
-		state->sys_data.nightlight_retrying = 1;
-		if (state->nightlight_retry_tag == 0) {
-			state->nightlight_retries = 0;
-			state->nightlight_retry_tag = g_timeout_add(2000, (GSourceFunc)nightlight_retry_cb, state);
-		}
-	} else {
-		state->sys_data.nightlight_retrying = 0;
-		state->nightlight_retries = 0;
-	}
-	pthread_mutex_unlock(&state->mutex);
+	nightlight_handle_ipc_result(state, ok1, ok2);
 }
 
 gboolean nightlight_retry_cb(gpointer data) {
@@ -170,7 +163,7 @@ void nightlight_init(AppState *state) {
 	int active = 0;
 	int level = nightlight_load_state(&active);
 	if (level <= 0)
-		level = 15;
+		level = NIGHTLIGHT_DEFAULT_LEVEL;
 
 	pthread_mutex_lock(&state->mutex);
 	state->sys_data.nightlight_last_level = level;

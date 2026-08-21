@@ -2,6 +2,7 @@
 #include "chromeos_menu.h"
 #include "chromeos_menu_internal.h"
 #include "ipc.h"
+#include "metrics.h"
 #include "util.h"
 #include "widgets.h"
 #include <ctype.h>
@@ -204,21 +205,7 @@ static void on_keyboard_arrow_clicked(GtkWidget *widget, gpointer data) {
 
 	chromeos_menu_clear(bw);
 
-	GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-	gtk_style_context_add_class(gtk_widget_get_style_context(header), "cb-menu-header");
-
-	GtkWidget *back_btn = chromeos_menu_create_header_back_button();
-	MenuCtx *back_ctx = g_new0(MenuCtx, 1);
-	back_ctx->bw = bw;
-	back_ctx->state = state;
-	g_signal_connect_data(back_btn, "clicked", G_CALLBACK(chromeos_menu_on_back_to_main_clicked), back_ctx,
-						  (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
-	gtk_box_pack_start(GTK_BOX(header), back_btn, FALSE, FALSE, 0);
-
-	GtkWidget *title = gtk_label_new("Keyboard");
-	gtk_style_context_add_class(gtk_widget_get_style_context(title), "cb-menu-header-title");
-	gtk_box_pack_start(GTK_BOX(header), title, FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(bw->cb_menu_main_box), header, FALSE, FALSE, 0);
+	chromeos_menu_create_subpage_header(bw, state, "Keyboard");
 
 	GtkWidget *content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
 	gtk_style_context_add_class(gtk_widget_get_style_context(content), "cb-menu-content");
@@ -306,19 +293,7 @@ static void on_screenshot_clicked(GtkWidget *widget, gpointer data) {
 }
 
 void chromeos_menu_refresh_bluetooth_state(AppState *state) {
-	int exists = 0;
-	int powered = 0;
-	int connected = 0;
-	char device[64] = "";
-
-	bluetooth_get_status(&exists, &powered, &connected, device, sizeof(device));
-
-	pthread_mutex_lock(&state->mutex);
-	state->sys_data.bluetooth_adapter_exists = exists;
-	state->sys_data.bluetooth_powered = powered;
-	state->sys_data.bluetooth_connected = connected;
-	g_strlcpy(state->sys_data.bluetooth_device, device, sizeof(state->sys_data.bluetooth_device));
-	pthread_mutex_unlock(&state->mutex);
+	fetch_bluetooth(state);
 }
 
 static void show_bluetooth_menu(BarWindow *bw, AppState *state);
@@ -392,21 +367,7 @@ static int bluetooth_device_cmp(gconstpointer a, gconstpointer b) {
 static void show_bluetooth_menu(BarWindow *bw, AppState *state) {
 	chromeos_menu_clear(bw);
 
-	GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-	gtk_style_context_add_class(gtk_widget_get_style_context(header), "cb-menu-header");
-
-	GtkWidget *back_btn = chromeos_menu_create_header_back_button();
-	MenuCtx *back_ctx = g_new0(MenuCtx, 1);
-	back_ctx->bw = bw;
-	back_ctx->state = state;
-	g_signal_connect_data(back_btn, "clicked", G_CALLBACK(chromeos_menu_on_back_to_main_clicked), back_ctx,
-						  (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
-	gtk_box_pack_start(GTK_BOX(header), back_btn, FALSE, FALSE, 0);
-
-	GtkWidget *title = gtk_label_new("Bluetooth");
-	gtk_style_context_add_class(gtk_widget_get_style_context(title), "cb-menu-header-title");
-	gtk_box_pack_start(GTK_BOX(header), title, FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(bw->cb_menu_main_box), header, FALSE, FALSE, 0);
+	chromeos_menu_create_subpage_header(bw, state, "Bluetooth");
 
 	GtkWidget *content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
 	gtk_style_context_add_class(gtk_widget_get_style_context(content), "cb-menu-content");
@@ -536,6 +497,12 @@ static void power_menu_on_btn_clicked(GtkWidget *widget, gpointer data) {
 		gtk_popover_popdown(popover);
 	else
 		gtk_popover_popup(popover);
+}
+
+static void on_settings_clicked(GtkWidget *widget, gpointer data) {
+	(void)widget;
+	MenuCtx *ctx = (MenuCtx *)data;
+	chromeos_menu_show_leds(ctx->bw, ctx->state);
 }
 
 void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
@@ -695,6 +662,13 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 		g_object_unref(settings_pix);
 	} else {
 		gtk_container_add(GTK_CONTAINER(settings_btn), gtk_label_new("󰒓"));
+	}
+	{
+		MenuCtx *sctx = g_new0(MenuCtx, 1);
+		sctx->bw = bw;
+		sctx->state = state;
+		g_signal_connect_data(settings_btn, "clicked", G_CALLBACK(on_settings_clicked), sctx,
+							  (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
 	}
 	gtk_box_pack_end(GTK_BOX(bottom_box), settings_btn, FALSE, FALSE, 0);
 

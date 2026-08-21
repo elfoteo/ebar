@@ -1,7 +1,9 @@
 #include "metrics.h"
 #include "bar.h"
 #include "bluetooth.h"
+#include "constants.h"
 #include "util.h"
+#include "widgets.h"
 #include "wifi.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,7 +12,6 @@
 #include <unistd.h>
 #include <glob.h>
 #include <libupower-glib/upower.h>
-extern gboolean update_widgets_idle(gpointer data);
 
 static int layout_has_gpu(Config *cfg) {
     for (int r = 0; r < 2; r++)
@@ -22,7 +23,7 @@ static int layout_has_gpu(Config *cfg) {
     return 0;
 }
 
-static void fetch_system_metrics(AppState *w) {
+static void fetch_system_metrics(AppState *state) {
     double ram_val = 0, cpu_val = 0, disk_val = 0, temp_val = 0;
     float ram_total = 0, ram_avail = 0;
 
@@ -51,16 +52,16 @@ static void fetch_system_metrics(AppState *w) {
             long long current_idle = idle + iowait;
             long long current_total = user + nice + system + idle + iowait + irq + softirq + steal;
 
-            pthread_mutex_lock(&w->mutex);
-            if (w->prev_total > 0) {
-                long long total_diff = current_total - w->prev_total;
-                long long idle_diff = current_idle - w->prev_idle;
+            pthread_mutex_lock(&state->mutex);
+            if (state->prev_total > 0) {
+                long long total_diff = current_total - state->prev_total;
+                long long idle_diff = current_idle - state->prev_idle;
                 if (total_diff > 0)
                     cpu_val = 100.0 * (total_diff - idle_diff) / total_diff;
             }
-            w->prev_total = current_total;
-            w->prev_idle = current_idle;
-            pthread_mutex_unlock(&w->mutex);
+            state->prev_total = current_total;
+            state->prev_idle = current_idle;
+            pthread_mutex_unlock(&state->mutex);
         }
         fclose(fp);
     }
@@ -70,8 +71,8 @@ static void fetch_system_metrics(AppState *w) {
         disk_val = 100.0 * (1.0 - (double)st.f_bavail / (double)st.f_blocks);
     }
 
-    if (strcmp(w->config.metrics.temp_path, "auto") != 0) {
-        fp = fopen(w->config.metrics.temp_path, "r");
+    if (strcmp(state->config.metrics.temp_path, "auto") != 0) {
+        fp = fopen(state->config.metrics.temp_path, "r");
         if (fp) {
             int t;
             if (fscanf(fp, "%d", &t) == 1)
@@ -80,7 +81,7 @@ static void fetch_system_metrics(AppState *w) {
         }
     } else {
         // Fallback auto-detection from original code
-        fp = fopen("/sys/class/thermal/thermal_zone1/temp", "r");
+        fp = fopen(DEFAULT_TEMP_PATH, "r");
         if (fp) {
             int t;
             if (fscanf(fp, "%d", &t) == 1) temp_val = t / 1000.0;
@@ -125,7 +126,7 @@ static void fetch_system_metrics(AppState *w) {
     }
 
     double gpu_val = 0, gpu_temp_val = 0;
-    if (layout_has_gpu(&w->config)) {
+    if (layout_has_gpu(&state->config)) {
         fp = popen("nvidia-smi --query-gpu=utilization.gpu,temperature.gpu --format=csv,noheader,nounits 2>/dev/null", "r");
         if (fp) {
             int g_usage, g_temp;
@@ -137,19 +138,19 @@ static void fetch_system_metrics(AppState *w) {
         }
     }
 
-    pthread_mutex_lock(&w->mutex);
-    w->sys_data.ram_val = ram_val;
-    w->sys_data.cpu_val = cpu_val;
-    w->sys_data.disk_val = disk_val;
-    w->sys_data.temp_val = temp_val;
-    w->sys_data.gpu_val = gpu_val;
-    w->sys_data.gpu_temp_val = gpu_temp_val;
-    w->sys_data.ram_total = ram_total;
-    w->sys_data.ram_avail = ram_avail;
-    pthread_mutex_unlock(&w->mutex);
+    pthread_mutex_lock(&state->mutex);
+    state->sys_data.ram_val = ram_val;
+    state->sys_data.cpu_val = cpu_val;
+    state->sys_data.disk_val = disk_val;
+    state->sys_data.temp_val = temp_val;
+    state->sys_data.gpu_val = gpu_val;
+    state->sys_data.gpu_temp_val = gpu_temp_val;
+    state->sys_data.ram_total = ram_total;
+    state->sys_data.ram_avail = ram_avail;
+    pthread_mutex_unlock(&state->mutex);
 }
 
-void fetch_brightness(AppState *w) {
+void fetch_brightness(AppState *state) {
     static char actual_path[256] = "";
     static char max_path[256] = "";
 
@@ -173,12 +174,12 @@ void fetch_brightness(AppState *w) {
     }
 
     float b = (float)actual * 100.0f / (float)max;
-    pthread_mutex_lock(&w->mutex);
-    w->sys_data.brightness = b;
-    pthread_mutex_unlock(&w->mutex);
+    pthread_mutex_lock(&state->mutex);
+    state->sys_data.brightness = b;
+    pthread_mutex_unlock(&state->mutex);
 }
 
-static void fetch_battery(AppState *w) {
+static void fetch_battery(AppState *state) {
     int percent = -1, charging = 0;
     char time_rem[64] = "";
 
@@ -222,39 +223,23 @@ static void fetch_battery(AppState *w) {
         g_object_unref(client);
     }
 
-    pthread_mutex_lock(&w->mutex);
-    w->sys_data.bat_percent = percent;
-    w->sys_data.bat_charging = charging;
-    strncpy(w->sys_data.bat_time_remaining, time_rem, sizeof(w->sys_data.bat_time_remaining) - 1);
-    pthread_mutex_unlock(&w->mutex);
-}
-
-static void fetch_bluetooth(AppState *w) {
-    int exists = 0;
-    int powered = 0;
-    int connected = 0;
-    char device[64] = "";
-
-    bluetooth_get_status(&exists, &powered, &connected, device, sizeof(device));
-
-    pthread_mutex_lock(&w->mutex);
-    w->sys_data.bluetooth_adapter_exists = exists;
-    w->sys_data.bluetooth_powered = powered;
-    w->sys_data.bluetooth_connected = connected;
-    g_strlcpy(w->sys_data.bluetooth_device, device, sizeof(w->sys_data.bluetooth_device));
-    pthread_mutex_unlock(&w->mutex);
+    pthread_mutex_lock(&state->mutex);
+    state->sys_data.bat_percent = percent;
+    state->sys_data.bat_charging = charging;
+    strncpy(state->sys_data.bat_time_remaining, time_rem, sizeof(state->sys_data.bat_time_remaining) - 1);
+    pthread_mutex_unlock(&state->mutex);
 }
 
 void *metrics_thread_func(void *data) {
-    AppState *w = (AppState *)data;
+    AppState *state = (AppState *)data;
     int count = 0;
     while (1) {
-        fetch_system_metrics(w);
+        fetch_system_metrics(state);
         if (count % 5 == 0) {
-            fetch_battery(w);
-            fetch_bluetooth(w);
+            fetch_battery(state);
+            fetch_bluetooth(state);
         }
-        g_idle_add(update_widgets_idle, w);
+        g_idle_add(update_widgets_idle, state);
         sleep(1);
         count++;
     }

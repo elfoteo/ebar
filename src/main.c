@@ -1,7 +1,9 @@
 #include "bar.h"
 #include "chromeos_bar.h"
 #include "chromeos_menu.h"
+#include "chromeos_menu_internal.h"
 #include "config.h"
+#include "constants.h"
 #include "extra_events.h"
 #include "ipc.h"
 #include "media.h"
@@ -16,145 +18,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <time.h>
-#include <errno.h>
-
-static void send_to_ebar(const char *msg) {
-	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (fd < 0) {
-		perror("socket");
-		return;
-	}
-	struct sockaddr_un sa;
-	memset(&sa, 0, sizeof(sa));
-	sa.sun_family = AF_UNIX;
-	strncpy(sa.sun_path, "/tmp/hypr-events-extras.sock", sizeof(sa.sun_path) - 1);
-	if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) >= 0) {
-		write(fd, msg, strlen(msg));
-	}
-	close(fd);
-}
-
-static float get_current_brightness() {
-	char path[256];
-	long actual = 0, max = 1;
-	
-	if (find_backlight_path("actual_brightness", path, sizeof(path)) == 0) {
-		FILE *f = fopen(path, "r");
-		if (f) {
-			if (fscanf(f, "%ld", &actual) != 1) actual = 0;
-			fclose(f);
-		}
-	}
-	if (find_backlight_path("max_brightness", path, sizeof(path)) == 0) {
-		FILE *f = fopen(path, "r");
-		if (f) {
-			if (fscanf(f, "%ld", &max) != 1) max = 1;
-			fclose(f);
-		}
-	}
-
-	if (actual == 0) return 0.0f;
-	float pct = (float)actual * 100.0f / (float)max;
-	if (pct < 1.0f) return 1.0f; // DIM sentinel
-	return pct;
-}
-
-static void set_brightness(float target_pct, int transition_ms) {
-	char b_path[256], m_path[256];
-	if (find_backlight_path("brightness", b_path, sizeof(b_path)) != 0 || find_backlight_path("max_brightness", m_path, sizeof(m_path)) != 0) {
-		fprintf(stderr, "CRITICAL: Could not find backlight sysfs paths\n");
-		return;
-	}
-
-	long max = 1;
-	FILE *f = fopen(m_path, "r");
-	if (f) {
-		if (fscanf(f, "%ld", &max) != 1) max = 1;
-		fclose(f);
-	}
-
-	long start_raw = 0;
-	f = fopen(b_path, "r");
-	if (f) {
-		if (fscanf(f, "%ld", &start_raw) != 1) start_raw = 0;
-		fclose(f);
-	}
-
-	long target_raw = (long)(target_pct * (float)max / 100.0f);
-	if (target_pct > 0.001f && target_raw == 0) target_raw = 1;
-
-	// Check permissions
-	f = fopen(b_path, "w");
-	if (!f) {
-		fprintf(stderr, "FATAL: No write permission to %s. Error: %s\n", b_path, strerror(errno));
-		fprintf(stderr, "HINT: Ensure your user is in the 'video' or 'backlight' group or udev rules are set.\n");
-		return;
-	}
-
-	if (transition_ms <= 0) {
-		fprintf(f, "%ld", target_raw);
-		fclose(f);
-		return;
-	}
-
-	// Handover coordination
-	pid_t my_pid = getpid();
-	const char *coord_file = "/tmp/ebar-brightness.coord";
-	FILE *cf = fopen(coord_file, "w");
-	if (cf) {
-		fprintf(cf, "%d", (int)my_pid);
-		fclose(cf);
-	}
-
-	struct timespec start_time, now;
-	clock_gettime(CLOCK_MONOTONIC, &start_time);
-	
-	double duration = (double)transition_ms / 1000.0;
-	long last_val = start_raw;
-
-	while (1) {
-		clock_gettime(CLOCK_MONOTONIC, &now);
-		double elapsed = (now.tv_sec - start_time.tv_sec) + (now.tv_nsec - start_time.tv_nsec) * 1e-9;
-		
-		if (elapsed >= duration) break;
-
-		// Check if a newer process has taken over
-		cf = fopen(coord_file, "r");
-		if (cf) {
-			int boss_pid = 0;
-			if (fscanf(cf, "%d", &boss_pid) == 1 && boss_pid != (int)my_pid) {
-				fclose(cf);
-				fclose(f);
-				return; // Handover complete
-			}
-			fclose(cf);
-		}
-
-		double t = elapsed / duration;
-		long current_val = start_raw + (long)((double)(target_raw - start_raw) * t);
-		
-		if (current_val != last_val) {
-			rewind(f);
-			fprintf(f, "%ld", current_val);
-			fflush(f);
-			last_val = current_val;
-		}
-		
-		struct timespec sleep_ts = {0, 8000000}; // 8ms (approx 125Hz)
-		nanosleep(&sleep_ts, NULL);
-	}
-
-	// Final value
-	rewind(f);
-	fprintf(f, "%ld", target_raw);
-	fclose(f);
-}
 
 static gboolean anim_timer_func(gpointer data) {
 	AppState *state = (AppState *)data;
@@ -165,8 +32,8 @@ static gboolean anim_timer_func(gpointer data) {
 	float b_target = state->sys_data.brightness;
 	float b_current = state->sys_data.visual_brightness;
 	float b_diff = b_target - b_current;
-	if (fabsf(b_diff) > 0.05f) {
-		state->sys_data.visual_brightness += b_diff * 0.25f;
+	if (fabsf(b_diff) > ANIM_DEADZONE) {
+		state->sys_data.visual_brightness += b_diff * ANIM_BRIGHTNESS_LERP;
 		changed = 1;
 	} else if (b_current != b_target) {
 		state->sys_data.visual_brightness = b_target;
@@ -177,8 +44,8 @@ static gboolean anim_timer_func(gpointer data) {
 	float v_target = state->sys_data.vol;
 	float v_current = state->sys_data.visual_volume;
 	float v_diff = v_target - v_current;
-	if (fabsf(v_diff) > 0.05f) {
-		state->sys_data.visual_volume += v_diff * 0.15f;
+	if (fabsf(v_diff) > ANIM_DEADZONE) {
+		state->sys_data.visual_volume += v_diff * ANIM_VOLUME_LERP;
 		changed = 1;
 	} else if (v_current != v_target) {
 		state->sys_data.visual_volume = v_target;
@@ -201,7 +68,7 @@ void ensure_anim_timer(AppState *state) {
 	if (state->anim_timer_id == 0 &&
 	    (state->sys_data.visual_brightness != state->sys_data.brightness ||
 	     state->sys_data.visual_volume != state->sys_data.vol)) {
-		state->anim_timer_id = g_timeout_add(16, anim_timer_func, state);
+		state->anim_timer_id = g_timeout_add(ANIM_TIMER_INTERVAL_MS, anim_timer_func, state);
 	}
 	pthread_mutex_unlock(&state->mutex);
 }
@@ -243,7 +110,7 @@ int main(int argc, char **argv) {
 			float cur = get_current_brightness();
 			
 			// Check for logical target handover
-			const char *last_file = "/tmp/ebar-brightness.last";
+			const char *last_file = BRIGHTNESS_LAST_FILE_PATH;
 			FILE *lf = fopen(last_file, "r");
 			if (lf) {
 				float last_target;
@@ -322,20 +189,41 @@ int main(int argc, char **argv) {
 	}
 
 	wifi_init(state);
+	if (state->config.mode == MODE_CHROMEOS)
+		wifi_set_changed_callback(chromeos_menu_refresh_wifi_list_if_open);
 	pulse_init(state);
 	update_widgets_idle(state);
 	ensure_anim_timer(state);
 
 	pthread_t ipc_thread, metrics_thread, media_thread, extra_events_thread;
-	pthread_create(&ipc_thread, NULL, ipc_thread_func, state);
-	pthread_create(&metrics_thread, NULL, metrics_thread_func, state);
-	pthread_create(&media_thread, NULL, media_thread_func, state);
-	pthread_create(&extra_events_thread, NULL, extra_events_thread_func, state);
+	if (pthread_create(&ipc_thread, NULL, ipc_thread_func, state) != 0)
+		fprintf(stderr, "Failed to create IPC thread\n");
+	if (pthread_create(&metrics_thread, NULL, metrics_thread_func, state) != 0)
+		fprintf(stderr, "Failed to create metrics thread\n");
+	if (pthread_create(&media_thread, NULL, media_thread_func, state) != 0)
+		fprintf(stderr, "Failed to create media thread\n");
+	if (pthread_create(&extra_events_thread, NULL, extra_events_thread_func, state) != 0)
+		fprintf(stderr, "Failed to create extra_events thread\n");
 
 	gtk_main();
 
+	pthread_cancel(ipc_thread);
+	pthread_cancel(metrics_thread);
+	pthread_cancel(media_thread);
+	pthread_cancel(extra_events_thread);
+	pthread_join(ipc_thread, NULL);
+	pthread_join(metrics_thread, NULL);
+	pthread_join(media_thread, NULL);
+	pthread_join(extra_events_thread, NULL);
+
 	pulse_cleanup(state);
 	wifi_cleanup(state);
+	pthread_mutex_destroy(&state->mutex);
+	g_hash_table_destroy(state->window_map);
+	g_list_free(state->bar_windows);
+	g_free(state);
+
+	unlink(COORD_FILE_PATH);
 
 	return 0;
 }

@@ -1,6 +1,7 @@
 #include "chromeos_menu_internal.h"
 #include "nightlight.h"
 #include "pulse.h"
+#include "util.h"
 #include "widgets.h"
 #include <math.h>
 
@@ -10,21 +11,9 @@
 
 static void on_vol_scale_changed(GtkRange *range, gpointer data) {
 	MenuCtx *ctx = (MenuCtx *)data;
-	AppState *state = ctx ? ctx->state : NULL;
 	if (slider_is_updating(range))
 		return;
-	double val = slider_get_actual_value(range);
-	if (state) {
-		pthread_mutex_lock(&state->mutex);
-		state->last_manual_vol_update = time(NULL);
-		state->sys_data.vol = val;
-		if (val > 0.5)
-			state->sys_data.vol_muted = 0;
-		pthread_mutex_unlock(&state->mutex);
-	}
-	pulse_set_volume(state, val);
-	if (state)
-		update_widgets_idle(state);
+	handle_volume_slider_changed(range, ctx ? ctx->state : NULL);
 }
 
 static void on_mute_clicked(GtkWidget *widget, gpointer data) {
@@ -51,19 +40,9 @@ static void on_mute_clicked(GtkWidget *widget, gpointer data) {
 
 static void on_bright_scale_changed(GtkRange *range, gpointer data) {
 	MenuCtx *ctx = (MenuCtx *)data;
-	AppState *state = ctx ? ctx->state : NULL;
 	if (slider_is_updating(range))
 		return;
-	double val = slider_get_actual_value(range);
-	if (state) {
-		pthread_mutex_lock(&state->mutex);
-		state->sys_data.brightness = (float)val;
-		state->last_manual_bright_update = time(NULL);
-		pthread_mutex_unlock(&state->mutex);
-	}
-	char cmd[64];
-	snprintf(cmd, sizeof(cmd), "brightnessctl set %.0f%%", val);
-	g_spawn_command_line_async(cmd, NULL);
+	handle_brightness_slider_changed(range, ctx ? ctx->state : NULL);
 }
 
 static void on_nightlight_scale_changed(GtkRange *range, gpointer data) {
@@ -145,21 +124,7 @@ GtkWidget *chromeos_menu_create_brightness_nightlight_slider(MenuCtx *ctx) {
 void chromeos_menu_show_nightlight(BarWindow *bw, AppState *state) {
 	chromeos_menu_clear(bw);
 
-	GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-	gtk_style_context_add_class(gtk_widget_get_style_context(header), "cb-menu-header");
-
-	GtkWidget *back_btn = chromeos_menu_create_header_back_button();
-	MenuCtx *ctx = g_new0(MenuCtx, 1);
-	ctx->bw = bw;
-	ctx->state = state;
-	g_signal_connect_data(back_btn, "clicked", G_CALLBACK(chromeos_menu_on_back_to_main_clicked), ctx,
-						  (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
-	gtk_box_pack_start(GTK_BOX(header), back_btn, FALSE, FALSE, 0);
-
-	GtkWidget *title = gtk_label_new("Night Light");
-	gtk_style_context_add_class(gtk_widget_get_style_context(title), "cb-menu-header-title");
-	gtk_box_pack_start(GTK_BOX(header), title, FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(bw->cb_menu_main_box), header, FALSE, FALSE, 0);
+	chromeos_menu_create_subpage_header(bw, state, "Night Light");
 
 	pthread_mutex_lock(&state->mutex);
 	int level = state->sys_data.nightlight_level;
@@ -193,21 +158,7 @@ void chromeos_menu_show_nightlight(BarWindow *bw, AppState *state) {
 void chromeos_menu_show_volume(BarWindow *bw, AppState *state) {
 	chromeos_menu_clear(bw);
 
-	GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-	gtk_style_context_add_class(gtk_widget_get_style_context(header), "cb-menu-header");
-
-	GtkWidget *back_btn = chromeos_menu_create_header_back_button();
-	MenuCtx *ctx = g_new0(MenuCtx, 1);
-	ctx->bw = bw;
-	ctx->state = state;
-	g_signal_connect_data(back_btn, "clicked", G_CALLBACK(chromeos_menu_on_back_to_main_clicked), ctx,
-						  (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
-	gtk_box_pack_start(GTK_BOX(header), back_btn, FALSE, FALSE, 0);
-
-	GtkWidget *title = gtk_label_new("Volume");
-	gtk_style_context_add_class(gtk_widget_get_style_context(title), "cb-menu-header-title");
-	gtk_box_pack_start(GTK_BOX(header), title, FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(bw->cb_menu_main_box), header, FALSE, FALSE, 0);
+	chromeos_menu_create_subpage_header(bw, state, "Volume");
 
 	GtkWidget *content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 	gtk_style_context_add_class(gtk_widget_get_style_context(content), "cb-menu-content");

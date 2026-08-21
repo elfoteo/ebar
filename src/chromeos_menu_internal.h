@@ -11,10 +11,9 @@ enum {
 	SLIDER_VISUAL_MIN_PX = 36,
 	};
 
-	typedef struct {
-	BarWindow *bw;
-	AppState *state;
-} MenuCtx;
+#include "bar.h"
+
+typedef BarDestroyCtx MenuCtx;
 
 void chromeos_menu_show_main(BarWindow *bw, AppState *state);
 void chromeos_menu_show_wifi_networks(BarWindow *bw, AppState *state);
@@ -25,6 +24,7 @@ void chromeos_menu_refresh_wifi_list_if_open(AppState *state);
 
 void chromeos_menu_clear(BarWindow *bw);
 GtkWidget *chromeos_menu_create_header_back_button(void);
+GtkWidget *chromeos_menu_create_subpage_header(BarWindow *bw, AppState *state, const char *title);
 void chromeos_menu_ellipsize_label(GtkWidget *label, int max_width_chars);
 void chromeos_menu_free_generic_ctx(gpointer data, GClosure *closure);
 
@@ -42,6 +42,8 @@ void chromeos_menu_on_wifi_arrow_clicked(GtkWidget *widget, gpointer data);
 void chromeos_menu_on_nightlight_clicked(GtkWidget *widget, gpointer data);
 void chromeos_menu_on_nightlight_arrow_clicked(GtkWidget *widget, gpointer data);
 void chromeos_menu_on_back_to_main_clicked(GtkWidget *widget, gpointer data);
+
+void chromeos_menu_show_leds(BarWindow *bw, AppState *state);
 
 gboolean slider_is_updating(GtkRange *range);
 void slider_set_updating(GtkRange *range, gboolean updating);

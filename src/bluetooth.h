@@ -1,6 +1,7 @@
 #ifndef BLUETOOTH_H
 #define BLUETOOTH_H
 
+#include "types.h"
 #include <glib.h>
 #include <stddef.h>
 
@@ -21,5 +22,7 @@ int bluetooth_disconnect_device(const char *path);
 typedef void (*BluetoothConnectCallback)(const char *path, int success, gpointer user_data);
 void bluetooth_connect_device_async(const char *path, BluetoothConnectCallback cb, gpointer user_data);
 void bluetooth_disconnect_device_async(const char *path, BluetoothConnectCallback cb, gpointer user_data);
+
+void fetch_bluetooth(AppState *state);
 
 #endif

@@ -5,10 +5,9 @@
 #include "ipc.h"
 #include "pulse.h"
 #include "util.h"
+#include "widgets.h"
 #include <gtk/gtk.h>
 #include <time.h>
-
-extern gboolean update_widgets_idle(gpointer data);
 
 /* ── Slider helpers (forwarded from chromeos_menu_internal.h) ────────────── */
 
@@ -77,35 +76,16 @@ static GtkWidget *create_popup_slider(const char *icon, double initial_val, GCal
 
 static void on_popup_volume_changed(GtkRange *range, gpointer data) {
 	BarWindow *bw = (BarWindow *)data;
-	AppState *state = bw->state;
 	if (slider_is_updating(range))
 		return;
-	double val = slider_get_actual_value(range);
-	pthread_mutex_lock(&state->mutex);
-	state->last_manual_vol_update = time(NULL);
-	state->sys_data.vol = val;
-	if (val > 0.5)
-		state->sys_data.vol_muted = 0;
-	pthread_mutex_unlock(&state->mutex);
-
-	pulse_set_volume(state, val);
-	update_widgets_idle(state);
+	handle_volume_slider_changed(range, bw->state);
 }
 
 static void on_popup_brightness_changed(GtkRange *range, gpointer data) {
 	BarWindow *bw = (BarWindow *)data;
-	AppState *state = bw->state;
 	if (slider_is_updating(range))
 		return;
-	double val = slider_get_actual_value(range);
-	pthread_mutex_lock(&state->mutex);
-	state->sys_data.brightness = (float)val;
-	pthread_mutex_unlock(&state->mutex);
-
-	char cmd[64];
-	snprintf(cmd, sizeof(cmd), "brightnessctl set %.0f%%", val);
-	g_spawn_command_line_async(cmd, NULL);
-	update_widgets_idle(state);
+	handle_brightness_slider_changed(range, bw->state);
 }
 
 /* ── Animation and visibility ────────────────────────────────────────────── */
@@ -249,10 +229,7 @@ static void trigger_popup_generic(BarWindow *bw, int type, double val, const cha
 		bw->popup_opacity = 0.0;
 
 		/* Hyprland bug bypass: force RGBX to prevent unintended transparency/blur issues */
-		char *res = hyprctl_request("keyword windowrule forcergbx,title:^(ebar-popup)$");
-		if (res) free(res);
-		res = hyprctl_request("keyword layerrule forcergbx,ebar-popup");
-		if (res) free(res);
+		apply_forcergbx_bypass("ebar-popup", "ebar-popup");
 
 		GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 		gtk_widget_set_name(box, "menu-bg");

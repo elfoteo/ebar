@@ -3,6 +3,7 @@
 #include "chromeos_launcher.h"
 #include "chromeos_menu.h"
 #include "chromeos_menu_internal.h"
+#include "constants.h"
 #include "chromeos_popup.h"
 #include "metrics.h"
 #include "util.h"
@@ -22,12 +23,12 @@ char *hyprctl_request(const char *cmd);
 int check_fullscreen_on_monitor_with_data(int x, int y, const char *monitors, const char *clients);
 
 static gboolean fullscreen_css_idle(gpointer data) {
-    AppState *w = (AppState *)data;
+    AppState *state = (AppState *)data;
     char *monitors = hyprctl_request("j/monitors");
     char *clients = hyprctl_request("j/clients");
 
-    pthread_mutex_lock(&w->mutex);
-    for (GList *l = w->bar_windows; l != NULL; l = l->next) {
+    pthread_mutex_lock(&state->mutex);
+    for (GList *l = state->bar_windows; l != NULL; l = l->next) {
         BarWindow *bw = (BarWindow *)l->data;
         if (bw->monitor) {
             GdkRectangle geom;
@@ -35,12 +36,12 @@ static gboolean fullscreen_css_idle(gpointer data) {
             bw->has_fullscreen = check_fullscreen_on_monitor_with_data(geom.x, geom.y, monitors, clients);
         }
     }
-    pthread_mutex_unlock(&w->mutex);
+    pthread_mutex_unlock(&state->mutex);
 
     free(monitors);
     free(clients);
 
-    apply_global_css(w);
+    apply_global_css(state);
     return G_SOURCE_REMOVE;
 }
 
@@ -51,6 +52,23 @@ static gboolean update_ws_idle(gpointer data) {
 }
 
 /* ── socket1 helper ────────────────────────────────────────────────────────── */
+/* Send a message to the extra events socket (for CLI commands). */
+void send_to_ebar(const char *msg) {
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) {
+        perror("socket");
+        return;
+    }
+    struct sockaddr_un sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sun_family = AF_UNIX;
+    strncpy(sa.sun_path, EXTRA_EVENTS_SOCK_PATH, sizeof(sa.sun_path) - 1);
+    if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) >= 0) {
+        write(fd, msg, strlen(msg));
+    }
+    close(fd);
+}
+
 /* Send a single request to Hyprland socket1 and return a malloc'd response.  */
 char *hyprctl_request(const char *cmd) {
     const char *runtime = getenv("XDG_RUNTIME_DIR");
@@ -71,12 +89,13 @@ char *hyprctl_request(const char *cmd) {
     if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) { close(fd); return NULL; }
     if (write(fd, cmd, strlen(cmd)) < 0)                     { close(fd); return NULL; }
 
-    char *buf = malloc(131072);
+    char *buf = malloc(HYPR_SOCKET_BUFFER_SIZE);
     if (!buf) { close(fd); return NULL; }
 
     size_t total = 0;
+    const size_t capacity = HYPR_SOCKET_BUFFER_SIZE;
     ssize_t n;
-    while ((n = read(fd, buf + total, 131072 - total - 1)) > 0) total += (size_t)n;
+    while (total < capacity - 1 && (n = read(fd, buf + total, capacity - total - 1)) > 0) total += (size_t)n;
     buf[total] = '\0';
     close(fd);
     return buf;
@@ -160,7 +179,7 @@ static void str_upper(char *s) {
 
 /* Query Hyprland for the active keyboard layout and store uppercase code.
    Uses j/getoption for the layout list and j/devices for the active keymap. */
-static void fetch_layout_into(AppState *w) {
+static void fetch_layout_into(AppState *state) {
     /* 1. Layout list: "us,es,fr,..." */
     char *opt = hyprctl_request("j/getoption input:kb_layout");
     if (!opt) return;
@@ -215,9 +234,9 @@ static void fetch_layout_into(AppState *w) {
     if (tok) { strncpy(out, tok, sizeof(out) - 1); out[sizeof(out)-1] = '\0'; }
     str_upper(out);
 
-    pthread_mutex_lock(&w->mutex);
-    strncpy(w->sys_data.kb_layout, out, sizeof(w->sys_data.kb_layout) - 1);
-    pthread_mutex_unlock(&w->mutex);
+    pthread_mutex_lock(&state->mutex);
+    strncpy(state->sys_data.kb_layout, out, sizeof(state->sys_data.kb_layout) - 1);
+    pthread_mutex_unlock(&state->mutex);
 }
 
 /* ── activelayout event ────────────────────────────────────────────────────── */
@@ -230,26 +249,20 @@ static gboolean layout_idle(gpointer data) {
 }
 
 /* ── initial state ─────────────────────────────────────────────────────────── */
-void sync_initial_state(AppState *w) {
-    FILE *fp = popen("hyprctl monitors -j 2>/dev/null", "r");
-    if (fp) {
-        char buffer[8192];
-        size_t n = fread(buffer, 1, sizeof(buffer) - 1, fp);
-        buffer[n] = '\0';
-        char *active = strstr(buffer, "\"activeWorkspace\":");
+void sync_initial_state(AppState *state) {
+    char *monitors_json = hyprctl_request("j/monitors");
+    if (monitors_json) {
+        char *active = strstr(monitors_json, "\"activeWorkspace\":");
         if (active) {
             char *id_p = strstr(active, "\"id\":");
-            if (id_p) w->active_workspace = atoi(id_p + 5);
+            if (id_p) state->active_workspace = atoi(id_p + 5);
         }
-        pclose(fp);
+        free(monitors_json);
     }
 
-    fp = popen("hyprctl clients -j 2>/dev/null", "r");
-    if (fp) {
-        char *buf = malloc(65536);
-        size_t n = fread(buf, 1, 65535, fp);
-        buf[n] = '\0';
-        char *p = buf;
+    char *clients_json = hyprctl_request("j/clients");
+    if (clients_json) {
+        char *p = clients_json;
         while ((p = strstr(p, "{"))) {
             char *addr_p = strstr(p, "\"address\":");
             char *ws_p = strstr(p, "\"workspace\":");
@@ -263,8 +276,8 @@ void sync_initial_state(AppState *w) {
                 if (id_p) {
                     int id = atoi(id_p + 5);
                     if (id >= 1 && id <= MAX_WORKSPACES) {
-                        w->ws_win_count[id]++;
-                        g_hash_table_insert(w->window_map, addr_to_map, GINT_TO_POINTER(id));
+                        state->ws_win_count[id]++;
+                        g_hash_table_insert(state->window_map, addr_to_map, GINT_TO_POINTER(id));
                     } else g_free(addr_to_map);
                 } else g_free(addr_to_map);
                 g_free(raw_addr);
@@ -272,19 +285,18 @@ void sync_initial_state(AppState *w) {
             if (!next) break;
             p = next;
         }
-        free(buf);
-        pclose(fp);
+        free(clients_json);
     }
 
     /* Initial keyboard layout (no popen needed beyond here) */
-    fetch_layout_into(w);
+    fetch_layout_into(state);
 
-    w->app_list = g_app_info_get_all();
+    state->app_list = g_app_info_get_all();
 
-    fetch_brightness(w);
-    pthread_mutex_lock(&w->mutex);
-    w->sys_data.brightness_initialized = 1;
-    pthread_mutex_unlock(&w->mutex);
+    fetch_brightness(state);
+    pthread_mutex_lock(&state->mutex);
+    state->sys_data.brightness_initialized = 1;
+    pthread_mutex_unlock(&state->mutex);
 }
 
 /* ── IPC event dispatcher ──────────────────────────────────────────────────── */
@@ -294,108 +306,106 @@ static gboolean close_menus_idle(gpointer data) {
     return G_SOURCE_REMOVE;
 }
 
-void handle_ipc_line(AppState *w, char *line) {
+void handle_ipc_line(AppState *state, char *line) {
     if (strstr(line, "togglefloating")) {
-        g_idle_add_full(G_PRIORITY_HIGH_IDLE, (GSourceFunc)update_widgets_idle, w, NULL);
-        g_idle_add(fullscreen_css_idle, w);
+        g_idle_add_full(G_PRIORITY_HIGH_IDLE, (GSourceFunc)update_widgets_idle, state, NULL);
+        g_idle_add(fullscreen_css_idle, state);
         return;
     }
     if (strncmp(line, "workspace>>", 11) == 0) {
-        pthread_mutex_lock(&w->mutex);
-        w->active_workspace = atoi(line + 11);
-        pthread_mutex_unlock(&w->mutex);
-        g_idle_add(update_ws_idle, w);
-        g_idle_add(close_menus_idle, w);
+        pthread_mutex_lock(&state->mutex);
+        state->active_workspace = atoi(line + 11);
+        pthread_mutex_unlock(&state->mutex);
+        g_idle_add(update_ws_idle, state);
+        g_idle_add(close_menus_idle, state);
     } else if (strncmp(line, "activewindowv2>>", 16) == 0) {
         char *p = line + 16;
         char *comma = strchr(p, ',');
         char *addr = comma ? g_strndup(p, comma - p) : g_strdup(p);
-        pthread_mutex_lock(&w->mutex);
-        gpointer ws_val = g_hash_table_lookup(w->window_map, addr);
-        if (ws_val) w->active_workspace = GPOINTER_TO_INT(ws_val);
-        pthread_mutex_unlock(&w->mutex);
+        pthread_mutex_lock(&state->mutex);
+        gpointer ws_val = g_hash_table_lookup(state->window_map, addr);
+        if (ws_val) state->active_workspace = GPOINTER_TO_INT(ws_val);
+        pthread_mutex_unlock(&state->mutex);
         g_free(addr);
-        g_idle_add(update_ws_idle, w);
-        g_idle_add(close_menus_idle, w);
+        g_idle_add(update_ws_idle, state);
+        g_idle_add(close_menus_idle, state);
     } else if (strncmp(line, "openwindow>>", 12) == 0) {
         char *p = line + 12;
         char *comma = strchr(p, ',');
         if (!comma) return;
         char *addr = g_strndup(p, comma - p);
         int ws_id = atoi(comma + 1);
-        pthread_mutex_lock(&w->mutex);
-        g_hash_table_insert(w->window_map, addr, GINT_TO_POINTER(ws_id));
-        if (ws_id >= 1 && ws_id <= MAX_WORKSPACES) w->ws_win_count[ws_id]++;
-        pthread_mutex_unlock(&w->mutex);
-        g_idle_add(update_ws_idle, w);
-        g_idle_add(close_menus_idle, w);
+        pthread_mutex_lock(&state->mutex);
+        g_hash_table_insert(state->window_map, addr, GINT_TO_POINTER(ws_id));
+        if (ws_id >= 1 && ws_id <= MAX_WORKSPACES) state->ws_win_count[ws_id]++;
+        pthread_mutex_unlock(&state->mutex);
+        g_idle_add(update_ws_idle, state);
+        g_idle_add(close_menus_idle, state);
     } else if (strncmp(line, "closewindow>>", 13) == 0) {
         char *addr = line + 13;
-        pthread_mutex_lock(&w->mutex);
-        gpointer ws_val = g_hash_table_lookup(w->window_map, addr);
+        pthread_mutex_lock(&state->mutex);
+        gpointer ws_val = g_hash_table_lookup(state->window_map, addr);
         if (ws_val) {
             int ws_id = GPOINTER_TO_INT(ws_val);
-            if (ws_id >= 1 && ws_id <= MAX_WORKSPACES) w->ws_win_count[ws_id]--;
-            g_hash_table_remove(w->window_map, addr);
+            if (ws_id >= 1 && ws_id <= MAX_WORKSPACES) state->ws_win_count[ws_id]--;
+            g_hash_table_remove(state->window_map, addr);
         }
-        pthread_mutex_unlock(&w->mutex);
-        g_idle_add(update_ws_idle, w);
-        g_idle_add(close_menus_idle, w);
+        pthread_mutex_unlock(&state->mutex);
+        g_idle_add(update_ws_idle, state);
+        g_idle_add(close_menus_idle, state);
     } else if (strncmp(line, "movewindow>>", 12) == 0) {
         char *p = line + 12;
         char *comma = strchr(p, ',');
         if (!comma) return;
         char *addr = g_strndup(p, comma - p);
         int new_ws = atoi(comma + 1);
-        pthread_mutex_lock(&w->mutex);
-        gpointer old_ws_val = g_hash_table_lookup(w->window_map, addr);
+        pthread_mutex_lock(&state->mutex);
+        gpointer old_ws_val = g_hash_table_lookup(state->window_map, addr);
         if (old_ws_val) {
             int old_ws = GPOINTER_TO_INT(old_ws_val);
-            if (old_ws >= 1 && old_ws <= MAX_WORKSPACES) w->ws_win_count[old_ws]--;
+            if (old_ws >= 1 && old_ws <= MAX_WORKSPACES) state->ws_win_count[old_ws]--;
         }
-        g_hash_table_insert(w->window_map, g_strdup(addr), GINT_TO_POINTER(new_ws));
-        if (new_ws >= 1 && new_ws <= MAX_WORKSPACES) w->ws_win_count[new_ws]++;
+        g_hash_table_insert(state->window_map, g_strdup(addr), GINT_TO_POINTER(new_ws));
+        if (new_ws >= 1 && new_ws <= MAX_WORKSPACES) state->ws_win_count[new_ws]++;
         g_free(addr);
-        pthread_mutex_unlock(&w->mutex);
-        g_idle_add(update_ws_idle, w);
-        g_idle_add(close_menus_idle, w);
+        pthread_mutex_unlock(&state->mutex);
+        g_idle_add(update_ws_idle, state);
+        g_idle_add(close_menus_idle, state);
     } else if (strncmp(line, "activelayout>>", 14) == 0) {
         /* activelayout>>keyboard_name,Layout Display Name */
-        g_idle_add(layout_idle, w);
+        g_idle_add(layout_idle, state);
     } else if (strncmp(line, "fullscreen>>", 12) == 0) {
         /* fullscreen>>1 = entered fullscreen, fullscreen>>0 = left fullscreen */
         int fs = atoi(line + 12);
-        pthread_mutex_lock(&w->mutex);
-        w->has_fullscreen = fs;
-        pthread_mutex_unlock(&w->mutex);
-        g_idle_add(fullscreen_css_idle, w);
-        g_idle_add(close_menus_idle, w);
+        pthread_mutex_lock(&state->mutex);
+        state->has_fullscreen = fs;
+        pthread_mutex_unlock(&state->mutex);
+        g_idle_add(fullscreen_css_idle, state);
+        g_idle_add(close_menus_idle, state);
     } else if (strncmp(line, "brightness>>", 12) == 0) {
         float val = atof(line + 12);
-        pthread_mutex_lock(&w->mutex);
-        float old_bright = w->sys_data.brightness;
-        int old_initialized = w->sys_data.brightness_initialized;
+        pthread_mutex_lock(&state->mutex);
+        float old_bright = state->sys_data.brightness;
+        int old_initialized = state->sys_data.brightness_initialized;
         int changed = (!old_initialized || old_bright != val);
         
-        w->sys_data.brightness = val;
-        w->sys_data.brightness_initialized = 1;
+        state->sys_data.brightness = val;
+        state->sys_data.brightness_initialized = 1;
 
         if (changed && old_initialized) {
-            for (GList *l = w->bar_windows; l != NULL; l = l->next) {
+            for (GList *l = state->bar_windows; l != NULL; l = l->next) {
                 BarWindow *bw = (BarWindow *)l->data;
                 g_idle_add_full(G_PRIORITY_HIGH_IDLE, trigger_brightness_popup_idle, bw, NULL);
             }
         }
-        pthread_mutex_unlock(&w->mutex);
-        ensure_anim_timer(w);
-        g_idle_add_full(G_PRIORITY_HIGH_IDLE, (GSourceFunc)update_widgets_idle, w, NULL);
+        pthread_mutex_unlock(&state->mutex);
+        ensure_anim_timer(state);
+        g_idle_add_full(G_PRIORITY_HIGH_IDLE, (GSourceFunc)update_widgets_idle, state, NULL);
     }
 }
 
-void handle_ipc_line(AppState *w, char *line);
-
 void *ipc_thread_func(void *data) {
-    AppState *w = (AppState *)data;
+    AppState *state = (AppState *)data;
     const char *runtime = getenv("XDG_RUNTIME_DIR"), *his = getenv("HYPRLAND_INSTANCE_SIGNATURE");
     if (!runtime || !his) return NULL;
     char sock_path[256];
@@ -410,7 +420,7 @@ void *ipc_thread_func(void *data) {
         
         if (connect(sock_fd, (struct sockaddr *)&sock_addr, sizeof(sock_addr)) < 0) {
             close(sock_fd);
-            usleep(100000);
+            usleep(IPC_RECONNECT_DELAY_US);
             continue;
         }
 
@@ -429,7 +439,7 @@ void *ipc_thread_func(void *data) {
                 buffer[n] = '\0';
                 char *saveptr, *line = strtok_r(buffer, "\n", &saveptr);
                 while (line) {
-                    handle_ipc_line(w, line);
+                    handle_ipc_line(state, line);
                     line = strtok_r(NULL, "\n", &saveptr);
                 }
             } else if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
@@ -437,7 +447,7 @@ void *ipc_thread_func(void *data) {
             }
         }
         close(sock_fd);
-        usleep(100000); // 100ms
+        usleep(IPC_RECONNECT_DELAY_US); // 100ms
     }
     return NULL;
 }

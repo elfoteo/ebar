@@ -1,12 +1,16 @@
 #include "bluetooth.h"
 #include <gio/gio.h>
+#include <stdio.h>
 #include <string.h>
+#include <pthread.h>
 
 static GDBusConnection *bluetooth_bus(void) {
 	GError *error = NULL;
 	GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &error);
-	if (error)
+	if (error) {
+		fprintf(stderr, "Bluetooth: failed to get system bus: %s\n", error->message);
 		g_error_free(error);
+	}
 	return bus;
 }
 
@@ -415,4 +419,20 @@ void bluetooth_connect_device_async(const char *path, BluetoothConnectCallback c
 
 void bluetooth_disconnect_device_async(const char *path, BluetoothConnectCallback cb, gpointer user_data) {
 	bluetooth_device_call_async(path, "Disconnect", cb, user_data);
+}
+
+void fetch_bluetooth(AppState *state) {
+	int exists = 0;
+	int powered = 0;
+	int connected = 0;
+	char device[64] = "";
+
+	bluetooth_get_status(&exists, &powered, &connected, device, sizeof(device));
+
+	pthread_mutex_lock(&state->mutex);
+	state->sys_data.bluetooth_adapter_exists = exists;
+	state->sys_data.bluetooth_powered = powered;
+	state->sys_data.bluetooth_connected = connected;
+	g_strlcpy(state->sys_data.bluetooth_device, device, sizeof(state->sys_data.bluetooth_device));
+	pthread_mutex_unlock(&state->mutex);
 }

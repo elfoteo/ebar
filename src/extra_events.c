@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "extra_events.h"
+#include "constants.h"
 #include "ipc.h"
 #include "chromeos_menu.h"
 #include "chromeos_popup.h"
@@ -17,8 +18,8 @@
 #define MAX_EXTRA_CLIENTS 10
 
 void *extra_events_thread_func(void *data) {
-    AppState *w = (AppState *)data;
-    const char *extra_sock_path = "/tmp/hypr-events-extras.sock";
+    AppState *state = (AppState *)data;
+    const char *extra_sock_path = EXTRA_EVENTS_SOCK_PATH;
 
     int extra_listen_fd = -1;
     int extra_clients[MAX_EXTRA_CLIENTS];
@@ -64,7 +65,7 @@ void *extra_events_thread_func(void *data) {
         int ret = poll(fds, nfds, -1);
         if (ret < 0) {
             if (errno == EINTR) continue;
-            usleep(100000);
+            usleep(IPC_RECONNECT_DELAY_US);
             continue;
         }
 
@@ -96,7 +97,7 @@ void *extra_events_thread_func(void *data) {
                                 buffer[n] = '\0';
                                 char *saveptr, *line = strtok_r(buffer, "\n", &saveptr);
                                 while (line) {
-                                    handle_ipc_line(w, line);
+                                    handle_ipc_line(state, line);
                                     line = strtok_r(NULL, "\n", &saveptr);
                                 }
                             }

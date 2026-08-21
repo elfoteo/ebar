@@ -209,22 +209,7 @@ void chromeos_menu_show_wifi_networks(BarWindow *bw, AppState *state) {
 	chromeos_menu_clear(bw);
 	g_object_set_data(G_OBJECT(bw->cb_menu_main_box), "current-view", "wifi-networks");
 
-	GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-	gtk_style_context_add_class(gtk_widget_get_style_context(header), "cb-menu-header");
-
-	GtkWidget *back_btn = chromeos_menu_create_header_back_button();
-	MenuCtx *ctx = g_new0(MenuCtx, 1);
-	ctx->bw = bw;
-	ctx->state = state;
-	g_signal_connect_data(back_btn, "clicked", G_CALLBACK(chromeos_menu_on_back_to_main_clicked), ctx,
-						  (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
-	gtk_box_pack_start(GTK_BOX(header), back_btn, FALSE, FALSE, 0);
-
-	GtkWidget *title = gtk_label_new("WiFi");
-	gtk_style_context_add_class(gtk_widget_get_style_context(title), "cb-menu-header-title");
-	gtk_box_pack_start(GTK_BOX(header), title, FALSE, FALSE, 0);
-
-	gtk_box_pack_start(GTK_BOX(bw->cb_menu_main_box), header, FALSE, FALSE, 0);
+	chromeos_menu_create_subpage_header(bw, state, "WiFi");
 
 	GtkWidget *sep = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
 	gtk_box_pack_start(GTK_BOX(bw->cb_menu_main_box), sep, FALSE, FALSE, 8);

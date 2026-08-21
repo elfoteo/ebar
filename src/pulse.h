@@ -10,6 +10,8 @@ typedef struct PulseState {
 	unsigned int default_sink_index;
 	char default_sink_name[256];
 	unsigned int channels;
+	unsigned int query_seq;   /* bumped on every new query chain; stale responses are dropped */
+	int debounce_id;          /* g_timeout source id coalescing subscription event storms */
 } PulseState;
 
 void pulse_init(AppState *state);

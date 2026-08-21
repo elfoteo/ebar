@@ -7,6 +7,9 @@
 
 #define MAX_WORKSPACES 10
 #define MAX_LAUNCHER_APPS 15
+#define POPUP_TYPE_BRIGHTNESS 0
+#define POPUP_TYPE_VOLUME     1
+#define POPUP_COUNT           2
 
 typedef struct PulseState PulseState;
 
@@ -199,10 +202,6 @@ typedef struct {
     GtkWidget *cb_menu_main_box;
     GtkWidget *cb_menu_brightness_slider;
     GtkWidget *cb_menu_volume_slider;
-
-#define POPUP_TYPE_BRIGHTNESS 0
-#define POPUP_TYPE_VOLUME     1
-#define POPUP_COUNT           2
 
     /* Passive popups */
     GtkWidget *popup_window;

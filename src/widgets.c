@@ -1,6 +1,7 @@
 #include "widgets.h"
 #include "chromeos_bar.h"
 #include "chromeos_popup.h"
+#include "constants.h"
 #include "gtk-layer-shell.h"
 #include "nightlight.h"
 #include "pulse.h"
@@ -15,6 +16,18 @@
 #define RING_SIZE           48
 #define RING_THICKNESS      3.0
 #define RING_PADDING        2.0
+
+static double compute_scroll_delta(GdkEventScroll *event, double step) {
+	if (event->direction == GDK_SCROLL_UP)
+		return step;
+	else if (event->direction == GDK_SCROLL_DOWN)
+		return -step;
+	else if (event->direction == GDK_SCROLL_SMOOTH)
+		return -event->delta_y * step;
+	return 0;
+}
+
+static void draw_ring(cairo_t *cr, GtkAllocation *alloc, double pct, const GdkRGBA *ring);
 
 static gboolean on_btn_enter(GtkWidget *widget, GdkEventCrossing *event, gpointer data) {
 	(void)data;
@@ -58,42 +71,36 @@ static void on_media_next(GtkWidget *widget, gpointer data) {
 
 static gboolean on_volume_scroll(GtkWidget *widget, GdkEventScroll *event, gpointer data) {
 	(void)widget;
-	AppState *w = (AppState *)data;
-	double delta = 0;
-	if (event->direction == GDK_SCROLL_UP)
-		delta = VOLUME_SCROLL_STEP;
-	else if (event->direction == GDK_SCROLL_DOWN)
-		delta = -VOLUME_SCROLL_STEP;
-	else if (event->direction == GDK_SCROLL_SMOOTH)
-		delta = -event->delta_y * VOLUME_SCROLL_STEP;
+	AppState *state = (AppState *)data;
+	double delta = compute_scroll_delta(event, VOLUME_SCROLL_STEP);
 	if (delta == 0)
 		return TRUE;
-	pthread_mutex_lock(&w->mutex);
-	w->last_manual_vol_update = time(NULL);
-	w->sys_data.vol = CLAMP(w->sys_data.vol + delta, 0.0, 100.0);
-	double vol = w->sys_data.vol;
-	pthread_mutex_unlock(&w->mutex);
-	pulse_set_volume(w, vol);
+	pthread_mutex_lock(&state->mutex);
+	state->last_manual_vol_update = time(NULL);
+	state->sys_data.vol = CLAMP(state->sys_data.vol + delta, 0.0, 100.0);
+	double vol = state->sys_data.vol;
+	pthread_mutex_unlock(&state->mutex);
+	pulse_set_volume(state, vol);
 	/* Trigger volume popup on each bar window */
-	for (GList *l = w->bar_windows; l != NULL; l = l->next)
+	for (GList *l = state->bar_windows; l != NULL; l = l->next)
 		g_idle_add(trigger_volume_popup_idle, l->data);
-	update_widgets_idle(w);
+	update_widgets_idle(state);
 	return TRUE;
 }
 
 static gboolean on_volume_click(GtkWidget *widget, GdkEventButton *event, gpointer data) {
 	(void)widget;
-	AppState *w = (AppState *)data;
+	AppState *state = (AppState *)data;
 	if (event->button == 1)
-		g_spawn_command_line_async(w->config.volume.app, NULL);
+		g_spawn_command_line_async(state->config.volume.app, NULL);
 	else if (event->button == 3) {
-		pthread_mutex_lock(&w->mutex);
-		w->last_manual_vol_update = time(NULL);
-		w->sys_data.vol_muted = !w->sys_data.vol_muted;
-		int muted = w->sys_data.vol_muted;
-		pthread_mutex_unlock(&w->mutex);
-		pulse_set_mute(w, muted);
-		update_widgets_idle(w);
+		pthread_mutex_lock(&state->mutex);
+		state->last_manual_vol_update = time(NULL);
+		state->sys_data.vol_muted = !state->sys_data.vol_muted;
+		int muted = state->sys_data.vol_muted;
+		pthread_mutex_unlock(&state->mutex);
+		pulse_set_mute(state, muted);
+		update_widgets_idle(state);
 	}
 	return TRUE;
 }
@@ -121,20 +128,23 @@ static void draw_ring(cairo_t *cr, GtkAllocation *alloc, double pct, const GdkRG
 	}
 }
 
+static gboolean on_ring_draw_generic(GtkWidget *widget, cairo_t *cr, double pct, AppState *state) {
+	GtkAllocation alloc;
+	gtk_widget_get_allocation(widget, &alloc);
+	GdkRGBA ring;
+	if (!gdk_rgba_parse(&ring, state->config.colors.ring_color))
+		ring = (GdkRGBA){1.0, 1.0, 1.0, 0.9};
+	draw_ring(cr, &alloc, pct, &ring);
+	return FALSE;
+}
+
 static gboolean on_volume_ring_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
 	AppState *state = (AppState *)data;
 	pthread_mutex_lock(&state->mutex);
 	double vol = state->sys_data.visual_volume;
 	int muted = state->sys_data.vol_muted;
 	pthread_mutex_unlock(&state->mutex);
-
-	GtkAllocation alloc;
-	gtk_widget_get_allocation(widget, &alloc);
-	GdkRGBA ring;
-	if (!gdk_rgba_parse(&ring, state->config.colors.ring_color))
-		ring = (GdkRGBA){1.0, 1.0, 1.0, 0.9};
-	draw_ring(cr, &alloc, muted ? 0 : vol, &ring);
-	return FALSE;
+	return on_ring_draw_generic(widget, cr, muted ? 0 : vol, state);
 }
 
 GtkWidget *widget_workspaces(BarWindow *bw, AppState *state) {
@@ -261,25 +271,19 @@ GtkWidget *widget_volume(BarWindow *bw, AppState *state) {
 static gboolean on_brightness_scroll(GtkWidget *widget, GdkEventScroll *event, gpointer data) {
 	(void)widget;
 	BarWindow *bw = (BarWindow *)data;
-	AppState *w = bw->state;
-	double delta = 0;
-	if (event->direction == GDK_SCROLL_UP)
-		delta = BRIGHTNESS_SCROLL_STEP;
-	else if (event->direction == GDK_SCROLL_DOWN)
-		delta = -BRIGHTNESS_SCROLL_STEP;
-	else if (event->direction == GDK_SCROLL_SMOOTH)
-		delta = -event->delta_y * BRIGHTNESS_SCROLL_STEP;
+	AppState *state = bw->state;
+	double delta = compute_scroll_delta(event, BRIGHTNESS_SCROLL_STEP);
 	if (delta == 0)
 		return TRUE;
-	pthread_mutex_lock(&w->mutex);
-	w->sys_data.brightness = CLAMP(w->sys_data.brightness + delta, 0.0, 100.0);
-	double bright = w->sys_data.brightness;
-	pthread_mutex_unlock(&w->mutex);
+	pthread_mutex_lock(&state->mutex);
+	state->sys_data.brightness = CLAMP(state->sys_data.brightness + delta, 0.0, 100.0);
+	double bright = state->sys_data.brightness;
+	pthread_mutex_unlock(&state->mutex);
 	char cmd[64];
-	snprintf(cmd, sizeof(cmd), "brightnessctl set %.0f%%", bright);
+	snprintf(cmd, sizeof(cmd), BRIGHTNESSCTL_SET_FMT, bright);
 	g_spawn_command_line_async(cmd, NULL);
 	g_idle_add(trigger_brightness_popup_idle, bw);
-	update_widgets_idle(w);
+	update_widgets_idle(state);
 	return TRUE;
 }
 
@@ -297,14 +301,7 @@ static gboolean on_brightness_ring_draw(GtkWidget *widget, cairo_t *cr, gpointer
 	pthread_mutex_lock(&state->mutex);
 	double bright = state->sys_data.visual_brightness;
 	pthread_mutex_unlock(&state->mutex);
-
-	GtkAllocation alloc;
-	gtk_widget_get_allocation(widget, &alloc);
-	GdkRGBA ring;
-	if (!gdk_rgba_parse(&ring, state->config.colors.ring_color))
-		ring = (GdkRGBA){1.0, 1.0, 1.0, 0.9};
-	draw_ring(cr, &alloc, bright, &ring);
-	return FALSE;
+	return on_ring_draw_generic(widget, cr, bright, state);
 }
 
 GtkWidget *widget_brightness(BarWindow *bw, AppState *state) {
@@ -336,27 +333,14 @@ static gboolean on_nightlight_ring_draw(GtkWidget *widget, cairo_t *cr, gpointer
 	pthread_mutex_lock(&state->mutex);
 	int nl_level = state->sys_data.nightlight_level;
 	pthread_mutex_unlock(&state->mutex);
-
-	GtkAllocation alloc;
-	gtk_widget_get_allocation(widget, &alloc);
-	GdkRGBA ring;
-	if (!gdk_rgba_parse(&ring, state->config.colors.ring_color))
-		ring = (GdkRGBA){1.0, 1.0, 1.0, 0.9};
-	draw_ring(cr, &alloc, nl_level, &ring);
-	return FALSE;
+	return on_ring_draw_generic(widget, cr, nl_level, state);
 }
 
 static gboolean on_nightlight_scroll(GtkWidget *widget, GdkEventScroll *event, gpointer data) {
 	(void)widget;
 	AppState *state = (AppState *)data;
 	pthread_mutex_lock(&state->mutex);
-	double delta = 0;
-	if (event->direction == GDK_SCROLL_UP)
-		delta = state->config.nightlight.step;
-	else if (event->direction == GDK_SCROLL_DOWN)
-		delta = -state->config.nightlight.step;
-	else if (event->direction == GDK_SCROLL_SMOOTH)
-		delta = -event->delta_y * state->config.nightlight.step;
+	double delta = compute_scroll_delta(event, state->config.nightlight.step);
 
 	int old_level = state->sys_data.nightlight_level;
 	state->sys_data.nightlight_level = (int)CLAMP(old_level + delta, 0, 100);
@@ -399,7 +383,7 @@ static gboolean on_nightlight_click(GtkWidget *widget, GdkEventButton *event, gp
 			last = nightlight_load_state(&dummy_active);
 		}
 		if (last <= 0)
-			last = 15;
+			last = NIGHTLIGHT_DEFAULT_LEVEL;
 		state->sys_data.nightlight_level = last;
 		state->sys_data.nightlight_on = 1;
 		pthread_mutex_unlock(&state->mutex);
@@ -532,32 +516,32 @@ GtkWidget *widget_metrics(BarWindow *bw, AppState *state) {
 	return grid;
 }
 
-void update_workspace_display(AppState *w) {
-	pthread_mutex_lock(&w->mutex);
-	for (GList *l = w->bar_windows; l != NULL; l = l->next) {
+void update_workspace_display(AppState *state) {
+	pthread_mutex_lock(&state->mutex);
+	for (GList *l = state->bar_windows; l != NULL; l = l->next) {
 		BarWindow *bw = (BarWindow *)l->data;
 		if (bw->cb_desk_label) {
 			char buf[64];
-			snprintf(buf, sizeof(buf), "Desk %d", w->active_workspace);
+			snprintf(buf, sizeof(buf), "Desk %d", state->active_workspace);
 			gtk_label_set_text(GTK_LABEL(bw->cb_desk_label), buf);
 			gtk_widget_queue_draw(bw->cb_desk_label);
 		}
-		for (int i = 0; i < w->config.workspaces.count; i++) {
+		for (int i = 0; i < state->config.workspaces.count; i++) {
 			if (!bw->ws_labels[i])
 				continue;
 			int ws_id = i + 1;
-			int occupied = (w->ws_win_count[ws_id] > 0);
-			const char *symbol = occupied ? w->config.workspaces.icon_occupied : w->config.workspaces.icon_empty;
+			int occupied = (state->ws_win_count[ws_id] > 0);
+			const char *symbol = occupied ? state->config.workspaces.icon_occupied : state->config.workspaces.icon_empty;
 			gtk_label_set_text(GTK_LABEL(bw->ws_labels[i]), symbol);
 			GtkStyleContext *context = gtk_widget_get_style_context(bw->ws_labels[i]);
 			gtk_style_context_remove_class(context, "workspace-active");
 			gtk_style_context_remove_class(context, "workspace-occupied");
-			if (ws_id == w->active_workspace)
+			if (ws_id == state->active_workspace)
 				gtk_style_context_add_class(context, "workspace-active");
 			else if (occupied)
 				gtk_style_context_add_class(context, "workspace-occupied");
 
-			if (!occupied && !w->config.workspaces.show_empty && ws_id != w->active_workspace)
+			if (!occupied && !state->config.workspaces.show_empty && ws_id != state->active_workspace)
 				gtk_widget_hide(bw->ws_labels[i]);
 			else
 				gtk_widget_show(bw->ws_labels[i]);
@@ -565,7 +549,7 @@ void update_workspace_display(AppState *w) {
 		}
 		gtk_widget_queue_draw(bw->window);
 	}
-	pthread_mutex_unlock(&w->mutex);
+	pthread_mutex_unlock(&state->mutex);
 }
 
 void update_metric_widget(GtkWidget *widget, MetricType type, SystemData *d, int use_bars) {
@@ -682,13 +666,13 @@ void update_widgets_idle_reset(void) {
 }
 
 gboolean update_widgets_idle(gpointer data) {
-	AppState *w = (AppState *)data;
-	pthread_mutex_lock(&w->mutex);
-	SystemData d = w->sys_data;
-	int active_workspace = w->active_workspace;
+	AppState *state = (AppState *)data;
+	pthread_mutex_lock(&state->mutex);
+	SystemData d = state->sys_data;
+	int active_workspace = state->active_workspace;
 	int ws_win_count[MAX_WORKSPACES + 1];
-	memcpy(ws_win_count, w->ws_win_count, sizeof(ws_win_count));
-	pthread_mutex_unlock(&w->mutex);
+	memcpy(ws_win_count, state->ws_win_count, sizeof(ws_win_count));
+	pthread_mutex_unlock(&state->mutex);
 
 	time_t now = time(NULL);
 
@@ -713,8 +697,8 @@ gboolean update_widgets_idle(gpointer data) {
 	last_time = now;
 
 	if (time_changed) {
-		strftime(tstr, sizeof(tstr), w->config.clock.time_format, &tmv);
-		strftime(dstr, sizeof(dstr), w->config.clock.date_format, &tmv);
+		strftime(tstr, sizeof(tstr), state->config.clock.time_format, &tmv);
+		strftime(dstr, sizeof(dstr), state->config.clock.date_format, &tmv);
 	}
 
 	int bat_changed = (d.bat_percent != last_d.bat_percent || d.bat_charging != last_d.bat_charging ||
@@ -733,7 +717,7 @@ gboolean update_widgets_idle(gpointer data) {
 	int media_changed = (d.is_playing != last_d.is_playing || strcmp(d.media_title, last_d.media_title) != 0 ||
 						 strcmp(d.media_artist, last_d.media_artist) != 0);
 
-	for (GList *l = w->bar_windows; l != NULL; l = l->next) {
+	for (GList *l = state->bar_windows; l != NULL; l = l->next) {
 		BarWindow *bw = (BarWindow *)l->data;
 
 		if (time_changed) {
@@ -745,15 +729,15 @@ gboolean update_widgets_idle(gpointer data) {
 
 		if (metrics_changed) {
 			for (int i = 0; i < 6; i++)
-				update_metric_widget(bw->metrics_widgets[i], (MetricType)i, &d, w->config.metrics.use_bars);
+				update_metric_widget(bw->metrics_widgets[i], (MetricType)i, &d, state->config.metrics.use_bars);
 		}
 
 		if (vol_changed) {
 			const char *vicon = get_volume_icon(d.vol, d.vol_muted);
 			char vstr[32];
 			if (d.vol_muted)
-				snprintf(vstr, sizeof(vstr), "%s%s", vicon, w->config.volume.show_percent ? " Muted" : "");
-			else if (w->config.volume.show_percent)
+				snprintf(vstr, sizeof(vstr), "%s%s", vicon, state->config.volume.show_percent ? " Muted" : "");
+			else if (state->config.volume.show_percent)
 				snprintf(vstr, sizeof(vstr), "%s %.0f%%", vicon, d.vol);
 			else
 				snprintf(vstr, sizeof(vstr), "%s", vicon);
@@ -810,15 +794,15 @@ gboolean update_widgets_idle(gpointer data) {
 			if (bw->media_play_btn)
 				gtk_button_set_label(GTK_BUTTON(bw->media_play_btn), d.is_playing ? "󰏤" : "󰐊");
 			int has_media = (d.media_title[0] != '\0');
-			int show_title = has_media && w->config.media.show_title;
-			int show_artist = has_media && w->config.media.show_artist && d.media_artist[0] != '\0';
+			int show_title = has_media && state->config.media.show_title;
+			int show_artist = has_media && state->config.media.show_artist && d.media_artist[0] != '\0';
 			/* Separator is only visible when media is playing AND at least one text line shows */
 			if (bw->media_sep)
 				gtk_widget_set_visible(bw->media_sep, show_title || show_artist);
 			if (bw->media_title_label) {
 				gtk_label_set_text(GTK_LABEL(bw->media_title_label), d.media_title);
 				gtk_widget_set_visible(bw->media_title_label, show_title);
-				gtk_label_set_max_width_chars(GTK_LABEL(bw->media_title_label), w->config.media.max_title_width / 8);
+				gtk_label_set_max_width_chars(GTK_LABEL(bw->media_title_label), state->config.media.max_title_width / 8);
 			}
 			if (bw->media_artist_label) {
 				gtk_label_set_text(GTK_LABEL(bw->media_artist_label), d.media_artist);
@@ -827,7 +811,7 @@ gboolean update_widgets_idle(gpointer data) {
 		}
 
 		/* ChromeOS tray labels, popups and menu sliders */
-		chromeos_update_tray(w, bw, &d,
+		chromeos_update_tray(state, bw, &d,
 							 time_changed, wifi_changed, bat_changed,
 							 kb_changed, vol_changed, brightness_changed,
 							 now, &tmv);
@@ -835,7 +819,7 @@ gboolean update_widgets_idle(gpointer data) {
 
 	int ws_changed = (active_workspace != last_active_ws || memcmp(ws_win_count, last_ws_count, sizeof(ws_win_count)) != 0);
 	if (ws_changed) {
-		update_workspace_display(w);
+		update_workspace_display(state);
 		last_active_ws = active_workspace;
 		memcpy(last_ws_count, ws_win_count, sizeof(ws_win_count));
 	}
@@ -843,7 +827,7 @@ gboolean update_widgets_idle(gpointer data) {
 	last_d = d;
 
 	extern void ensure_anim_timer(AppState * state);
-	ensure_anim_timer(w);
+	ensure_anim_timer(state);
 
 	return G_SOURCE_REMOVE;
 }

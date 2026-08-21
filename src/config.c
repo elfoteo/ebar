@@ -1,4 +1,5 @@
 #include "config.h"
+#include "constants.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -75,7 +76,7 @@ void config_save_default(const char *path) {
     fprintf(f, "# Rows separated by ; columns by spaces. Options: ram cpu gpu disk temp gputemp\n");
     fprintf(f, "layout          = ram cpu ; disk temp\n");
     fprintf(f, "use_bars        = true\n");
-    fprintf(f, "temp_path       = /sys/class/thermal/thermal_zone1/temp\n\n");
+    fprintf(f, "temp_path       = " DEFAULT_TEMP_PATH "\n\n");
 
     fprintf(f, "[nightlight]\n");
     fprintf(f, "# Requires hyprsunset running (exec-once = hyprsunset in hyprland.conf)\n");
@@ -120,47 +121,46 @@ void config_load(Config *cfg) {
     cfg->spacing       = 12; /* original hbox had spacing=12 */
 
     /* CSS-valid colour strings – inserted verbatim into the CSS stylesheet */
-    strcpy(cfg->colors.background,    "rgba(0,0,0,0.2)");
-    strcpy(cfg->colors.accent,         "#0179d4");
-    strcpy(cfg->colors.foreground,     "#ffffff");
-    strcpy(cfg->colors.dim_foreground, "rgba(255,255,255,0.6)");
-    strcpy(cfg->colors.border,         "rgba(255,255,255,0.2)");
-    strcpy(cfg->colors.ring_color,     "rgba(255,255,255,0.9)");
+    g_strlcpy(cfg->colors.background,    "rgba(0,0,0,0.2)", sizeof(cfg->colors.background));
+    g_strlcpy(cfg->colors.accent,         "#0179d4",         sizeof(cfg->colors.accent));
+    g_strlcpy(cfg->colors.foreground,     "#ffffff",          sizeof(cfg->colors.foreground));
+    g_strlcpy(cfg->colors.dim_foreground, "rgba(255,255,255,0.6)", sizeof(cfg->colors.dim_foreground));
+    g_strlcpy(cfg->colors.border,         "rgba(255,255,255,0.2)", sizeof(cfg->colors.border));
+    g_strlcpy(cfg->colors.ring_color,     "rgba(255,255,255,0.9)", sizeof(cfg->colors.ring_color));
 
-    strcpy(cfg->font.family, "JetBrainsMonoNerdFont");
+    g_strlcpy(cfg->font.family, "JetBrainsMonoNerdFont", sizeof(cfg->font.family));
     cfg->font.size = 13;
 
     cfg->workspaces.count = 10;
-    strcpy(cfg->workspaces.icon_empty,    "");
-    strcpy(cfg->workspaces.icon_occupied, "");
+    g_strlcpy(cfg->workspaces.icon_empty,    "", sizeof(cfg->workspaces.icon_empty));
+    g_strlcpy(cfg->workspaces.icon_occupied, "", sizeof(cfg->workspaces.icon_occupied));
     cfg->workspaces.show_empty = 1;
 
-    /* Default layout: media in center, metrics+volume+clock on right */
-    strcpy(cfg->left.widgets,   "workspaces");
-    strcpy(cfg->center.widgets, "media");
-    strcpy(cfg->right.widgets,  "metrics, volume, clock");
+    g_strlcpy(cfg->left.widgets,   "workspaces",          sizeof(cfg->left.widgets));
+    g_strlcpy(cfg->center.widgets, "media",               sizeof(cfg->center.widgets));
+    g_strlcpy(cfg->right.widgets,  "metrics, volume, clock", sizeof(cfg->right.widgets));
 
-    strcpy(cfg->clock.time_format, "%H:%M");
-    strcpy(cfg->clock.date_format, "%d/%m/%Y");
+    g_strlcpy(cfg->clock.time_format, "%H:%M",     sizeof(cfg->clock.time_format));
+    g_strlcpy(cfg->clock.date_format, "%d/%m/%Y",  sizeof(cfg->clock.date_format));
 
     cfg->media.show_title  = 1;
     cfg->media.show_artist = 1;
     cfg->media.background  = 1;
     cfg->media.max_title_width = 400;
-    strcpy(cfg->volume.app, "pavucontrol");
+    g_strlcpy(cfg->volume.app, "pavucontrol", sizeof(cfg->volume.app));
     cfg->volume.show_percent = 0;
 
     cfg->metrics.layout[0][0] = M_RAM;  cfg->metrics.layout[0][1] = M_CPU;  cfg->metrics.layout[0][2] = M_NONE;
     cfg->metrics.layout[1][0] = M_DISK; cfg->metrics.layout[1][1] = M_TEMP; cfg->metrics.layout[1][2] = M_NONE;
     cfg->metrics.use_bars = 1;
-    strcpy(cfg->metrics.temp_path, "/sys/class/thermal/thermal_zone1/temp");
+        g_strlcpy(cfg->metrics.temp_path, DEFAULT_TEMP_PATH, sizeof(cfg->metrics.temp_path));
 
     cfg->nightlight.temp_max  = 6500;
     cfg->nightlight.temp_min  = 5400;
     cfg->nightlight.gamma_max = 100.0;
     cfg->nightlight.gamma_min = 75.0;
     cfg->nightlight.step      = 5;
-    strcpy(cfg->nightlight.curve, "ease");
+    g_strlcpy(cfg->nightlight.curve, "ease", sizeof(cfg->nightlight.curve));
 
     float def_levels[] = {100, 82, 68, 54, 42, 31, 21, 12, 4, 1, 0};
     cfg->brightness.count = 11;
@@ -168,8 +168,8 @@ void config_load(Config *cfg) {
     cfg->brightness.transition_ms = 200;
 
     cfg->launcher.count = 0;
-    strcpy(cfg->chromeos.accent_color, "#0179d4");
-    strcpy(cfg->chromeos.screenshot_app, "~/coding/c/escreen/launch.sh");
+    g_strlcpy(cfg->chromeos.accent_color, "#0179d4", sizeof(cfg->chromeos.accent_color));
+    g_strlcpy(cfg->chromeos.screenshot_app, "~/coding/c/escreen/launch.sh", sizeof(cfg->chromeos.screenshot_app));
 
     /* ── Load from file ── */
     char path[512];
@@ -192,7 +192,7 @@ void config_load(Config *cfg) {
         if (line[0] == '[' && strchr(line, ']')) {
             char *end = strchr(line, ']');
             *end = '\0';
-            strcpy(section, line + 1);
+            g_strlcpy(section, line + 1, sizeof(section));
             continue;
         }
 
@@ -229,36 +229,36 @@ void config_load(Config *cfg) {
             else if (!strcmp(key, "padding_v"))     cfg->padding_v     = atoi(val);
             else if (!strcmp(key, "spacing"))       cfg->spacing       = atoi(val);
         } else if (!strcmp(section, "colors")) {
-            if      (!strcmp(key, "background"))   strcpy(cfg->colors.background,    val);
-            else if (!strcmp(key, "accent"))       strcpy(cfg->colors.accent,         val);
-            else if (!strcmp(key, "foreground"))   strcpy(cfg->colors.foreground,     val);
-            else if (!strcmp(key, "dim_foreground")) strcpy(cfg->colors.dim_foreground, val);
-            else if (!strcmp(key, "border"))       strcpy(cfg->colors.border,         val);
-            else if (!strcmp(key, "ring_color"))   strcpy(cfg->colors.ring_color,     val);
+            if      (!strcmp(key, "background"))   g_strlcpy(cfg->colors.background,    val, sizeof(cfg->colors.background));
+            else if (!strcmp(key, "accent"))       g_strlcpy(cfg->colors.accent,         val, sizeof(cfg->colors.accent));
+            else if (!strcmp(key, "foreground"))   g_strlcpy(cfg->colors.foreground,     val, sizeof(cfg->colors.foreground));
+            else if (!strcmp(key, "dim_foreground")) g_strlcpy(cfg->colors.dim_foreground, val, sizeof(cfg->colors.dim_foreground));
+            else if (!strcmp(key, "border"))       g_strlcpy(cfg->colors.border,         val, sizeof(cfg->colors.border));
+            else if (!strcmp(key, "ring_color"))   g_strlcpy(cfg->colors.ring_color,     val, sizeof(cfg->colors.ring_color));
         } else if (!strcmp(section, "font")) {
-            if      (!strcmp(key, "family")) strcpy(cfg->font.family, val);
+            if      (!strcmp(key, "family")) g_strlcpy(cfg->font.family, val, sizeof(cfg->font.family));
             else if (!strcmp(key, "size"))   cfg->font.size = atoi(val);
         } else if (!strcmp(section, "workspaces")) {
             if      (!strcmp(key, "count"))        cfg->workspaces.count = atoi(val);
-            else if (!strcmp(key, "icon_empty"))   strcpy(cfg->workspaces.icon_empty,    val);
-            else if (!strcmp(key, "icon_occupied"))strcpy(cfg->workspaces.icon_occupied,  val);
+            else if (!strcmp(key, "icon_empty"))   g_strlcpy(cfg->workspaces.icon_empty,    val, sizeof(cfg->workspaces.icon_empty));
+            else if (!strcmp(key, "icon_occupied"))g_strlcpy(cfg->workspaces.icon_occupied,  val, sizeof(cfg->workspaces.icon_occupied));
             else if (!strcmp(key, "show_empty"))   cfg->workspaces.show_empty = (!strcmp(val, "true"));
         } else if (!strcmp(section, "left")) {
-            if (!strcmp(key, "widgets")) strcpy(cfg->left.widgets, val);
+            if (!strcmp(key, "widgets")) g_strlcpy(cfg->left.widgets, val, sizeof(cfg->left.widgets));
         } else if (!strcmp(section, "center")) {
-            if (!strcmp(key, "widgets")) strcpy(cfg->center.widgets, val);
+            if (!strcmp(key, "widgets")) g_strlcpy(cfg->center.widgets, val, sizeof(cfg->center.widgets));
         } else if (!strcmp(section, "right")) {
-            if (!strcmp(key, "widgets")) strcpy(cfg->right.widgets, val);
+            if (!strcmp(key, "widgets")) g_strlcpy(cfg->right.widgets, val, sizeof(cfg->right.widgets));
         } else if (!strcmp(section, "clock")) {
-            if      (!strcmp(key, "time_format")) strcpy(cfg->clock.time_format, val);
-            else if (!strcmp(key, "date_format")) strcpy(cfg->clock.date_format, val);
+            if      (!strcmp(key, "time_format")) g_strlcpy(cfg->clock.time_format, val, sizeof(cfg->clock.time_format));
+            else if (!strcmp(key, "date_format")) g_strlcpy(cfg->clock.date_format, val, sizeof(cfg->clock.date_format));
         } else if (!strcmp(section, "media")) {
             if      (!strcmp(key, "show_title"))       cfg->media.show_title      = (!strcmp(val, "true"));
             else if (!strcmp(key, "show_artist"))      cfg->media.show_artist     = (!strcmp(val, "true"));
             else if (!strcmp(key, "background"))       cfg->media.background      = (!strcmp(val, "true"));
             else if (!strcmp(key, "max_title_width"))  cfg->media.max_title_width = atoi(val);
         } else if (!strcmp(section, "volume")) {
-            if      (!strcmp(key, "app"))          strcpy(cfg->volume.app, val);
+            if      (!strcmp(key, "app"))          g_strlcpy(cfg->volume.app, val, sizeof(cfg->volume.app));
             else if (!strcmp(key, "show_percent")) cfg->volume.show_percent = (!strcmp(val, "true"));
         } else if (!strcmp(section, "metrics")) {
             if (!strcmp(key, "layout")) {
@@ -277,7 +277,7 @@ void config_load(Config *cfg) {
                     while (i < 3) cfg->metrics.layout[1][i++] = M_NONE;
                 }
             } else if (!strcmp(key, "use_bars"))   cfg->metrics.use_bars = (!strcmp(val, "true"));
-            else if  (!strcmp(key, "temp_path"))   strcpy(cfg->metrics.temp_path, val);
+            else if  (!strcmp(key, "temp_path"))   g_strlcpy(cfg->metrics.temp_path, val, sizeof(cfg->metrics.temp_path));
         } else if (!strcmp(section, "nightlight")) {
             if      (!strcmp(key, "temp_max"))  cfg->nightlight.temp_max  = atoi(val);
             else if (!strcmp(key, "temp_min"))  cfg->nightlight.temp_min  = atoi(val);
@@ -300,10 +300,11 @@ void config_load(Config *cfg) {
                 char *colon = strchr(val, ':');
                 if (colon) {
                     *colon = '\0';
-                    strcpy(cfg->launcher.apps[cfg->launcher.count].action, val);
+                    g_strlcpy(cfg->launcher.apps[cfg->launcher.count].action, val, sizeof(cfg->launcher.apps[0].action));
                     char *icon_path = colon + 1;
                     if (icon_path[0] == '/') {
-                        strcpy(cfg->launcher.apps[cfg->launcher.count].icon_path, icon_path);
+                        g_strlcpy(cfg->launcher.apps[cfg->launcher.count].icon_path, icon_path,
+                                  sizeof(cfg->launcher.apps[0].icon_path));
                     } else {
                         snprintf(cfg->launcher.apps[cfg->launcher.count].icon_path,
                                  sizeof(cfg->launcher.apps[0].icon_path), 
@@ -313,8 +314,8 @@ void config_load(Config *cfg) {
                 }
             }
         } else if (!strcmp(section, "chromeos")) {
-            if      (!strcmp(key, "accent_color")) strcpy(cfg->chromeos.accent_color, val);
-            else if (!strcmp(key, "screenshot_app")) strcpy(cfg->chromeos.screenshot_app, val);
+            if      (!strcmp(key, "accent_color")) g_strlcpy(cfg->chromeos.accent_color, val, sizeof(cfg->chromeos.accent_color));
+            else if (!strcmp(key, "screenshot_app")) g_strlcpy(cfg->chromeos.screenshot_app, val, sizeof(cfg->chromeos.screenshot_app));
         }
 
     }

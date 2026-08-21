@@ -94,11 +94,7 @@ void apply_chromeos_css(AppState *state) {
 
 #undef A
 
-	GtkCssProvider *provider = gtk_css_provider_new();
-	gtk_css_provider_load_from_data(provider, css, -1, NULL);
-	gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(provider),
-											  GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-	g_object_unref(provider);
+	apply_css_from_string(css, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 
 	/* Apply or remove the fullscreen-mode class based on state */
 	for (GList *l = state->bar_windows; l != NULL; l = l->next) {
@@ -116,7 +112,7 @@ void apply_chromeos_css(AppState *state) {
 
 /* ── ChromeOS tray update (called from update_widgets_idle) ──────────────── */
 
-void chromeos_update_tray(AppState *w, BarWindow *bw, SystemData *d,
+void chromeos_update_tray(AppState *state, BarWindow *bw, SystemData *d,
 						  int time_changed, int wifi_changed, int bat_changed,
 						  int kb_changed, int vol_changed, int brightness_changed,
 						  time_t now, struct tm *tmv) {
@@ -219,7 +215,7 @@ void chromeos_update_tray(AppState *w, BarWindow *bw, SystemData *d,
 			} else {
 				gtk_style_context_remove_class(scale_ctx, "cb-menu-slider-muted");
 			}
-			if (!slider_is_updating(range) && (now - w->last_manual_vol_update > 1)) {
+			if (!slider_is_updating(range) && (now - state->last_manual_vol_update > 1)) {
 				slider_set_updating(range, TRUE);
 				gtk_range_set_value(range, slider_get_display_value(range, d->visual_volume));
 				slider_set_updating(range, FALSE);
@@ -233,7 +229,7 @@ void chromeos_update_tray(AppState *w, BarWindow *bw, SystemData *d,
 		}
 		if (bw->cb_menu_brightness_slider && GTK_IS_RANGE(bw->cb_menu_brightness_slider)) {
 			GtkRange *range = GTK_RANGE(bw->cb_menu_brightness_slider);
-			if (!slider_is_updating(range) && (now - w->last_manual_bright_update > 1)) {
+			if (!slider_is_updating(range) && (now - state->last_manual_bright_update > 1)) {
 				slider_set_updating(range, TRUE);
 				gtk_range_set_value(range, slider_get_display_value(range, d->visual_brightness));
 				slider_set_updating(range, FALSE);

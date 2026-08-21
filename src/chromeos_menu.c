@@ -60,6 +60,27 @@ void chromeos_menu_ellipsize_label(GtkWidget *label, int max_width_chars) {
 	gtk_label_set_max_width_chars(GTK_LABEL(label), max_width_chars);
 }
 
+/* GtkBox doesn't get GTK :hover prelight, so track it manually off the
+ * inner buttons and reflect it as a class on the whole pill. */
+static gboolean pill_hover_enter(GtkWidget *widget, GdkEventCrossing *event, gpointer data) {
+	(void)widget;
+	(void)event;
+	gtk_style_context_add_class(gtk_widget_get_style_context(GTK_WIDGET(data)), "cb-hover");
+	return FALSE;
+}
+
+static gboolean pill_hover_leave(GtkWidget *widget, GdkEventCrossing *event, gpointer data) {
+	(void)widget;
+	(void)event;
+	gtk_style_context_remove_class(gtk_widget_get_style_context(GTK_WIDGET(data)), "cb-hover");
+	return FALSE;
+}
+
+static void pill_track_hover(GtkWidget *button, GtkWidget *pill) {
+	g_signal_connect(button, "enter-notify-event", G_CALLBACK(pill_hover_enter), pill);
+	g_signal_connect(button, "leave-notify-event", G_CALLBACK(pill_hover_leave), pill);
+}
+
 GtkWidget *chromeos_menu_create_pill(const char *icon, const char *title, const char *subtitle, gboolean active, GtkWidget **subtitle_out,
 									 GtkWidget **icon_out, GtkWidget **arrow_out, GCallback on_click, GCallback on_arrow_click,
 									 gpointer user_data) {
@@ -72,6 +93,7 @@ GtkWidget *chromeos_menu_create_pill(const char *icon, const char *title, const 
 	gtk_style_context_add_class(gtk_widget_get_style_context(main_btn), "cb-menu-pill-main");
 	if (on_click)
 		g_signal_connect(main_btn, "clicked", on_click, user_data);
+	pill_track_hover(main_btn, box);
 
 	GtkWidget *inner_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 	GtkWidget *icon_lbl = gtk_label_new(icon);
@@ -103,11 +125,12 @@ GtkWidget *chromeos_menu_create_pill(const char *icon, const char *title, const 
 	gtk_box_pack_start(GTK_BOX(box), main_btn, TRUE, TRUE, 0);
 
 	if (on_arrow_click) {
-		GtkWidget *arrow_btn = gtk_button_new_with_label("");
+		GtkWidget *arrow_btn = gtk_button_new_with_label("");
 		if (arrow_out)
 			*arrow_out = arrow_btn;
 		gtk_style_context_add_class(gtk_widget_get_style_context(arrow_btn), "cb-menu-pill-arrow");
 		g_signal_connect(arrow_btn, "clicked", on_arrow_click, user_data);
+		pill_track_hover(arrow_btn, box);
 		gtk_box_pack_end(GTK_BOX(box), arrow_btn, FALSE, FALSE, 0);
 	} else {
 		if (arrow_out)
@@ -208,7 +231,7 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  color: #e8eaed; "
 	  "  text-shadow: none; "
 	  "} ");
-	A(".cb-menu-pill:hover { "
+	A(".cb-menu-pill.cb-hover { "
 	  "  background-color: #4c4c4c; "
 	  "} ");
 	A(".cb-menu-pill-active { "
@@ -219,7 +242,7 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  color: #202124; "
 	  "  text-shadow: none; "
 	  "} ");
-	A(".cb-menu-pill-active:hover { "
+	A(".cb-menu-pill-active.cb-hover { "
 	  "  background-color: %s; "
 	  "  filter: brightness(1.1); "
 	  "} ",
@@ -268,6 +291,9 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  border-radius: 18px; "
 	  "  min-height: 36px; "
 	  "} ");
+	A(".cb-menu-slider:hover trough { "
+	  "  background-image: linear-gradient(#4c4c4c, #4c4c4c); "
+	  "} ");
 	A(".cb-menu-slider highlight { "
 	  "  background-color: %s; "
 	  "  border-radius: 18px; "
@@ -297,6 +323,9 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  min-height: 26px; "
 	  "  padding: 2px; "
 	  "} ");
+	A(".cb-menu-led-toggle switch:hover { "
+	  "  background-color: #6d6d6d; "
+	  "} ");
 	A(".cb-menu-led-toggle switch:checked { "
 	  "  background-color: %s; "
 	  "} ",
@@ -316,6 +345,9 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  border-radius: 20px; "
 	  "  padding: 8px 16px; "
 	  "} ");
+	A(".cb-menu-power:hover { "
+	  "  background-color: #4c4c4c; "
+	  "} ");
 	A(".cb-menu-power label { "
 	  "  font-family: \"JetBrainsMonoNerdFont\"; "
 	  "  font-size: 24px; "
@@ -334,6 +366,9 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  min-width: 44px; "
 	  "  min-height: 44px; "
 	  "  padding: 0; "
+	  "} ");
+	A(".cb-menu-settings:hover { "
+	  "  background-color: #4c4c4c; "
 	  "} ");
 	A(".cb-menu-settings label { "
 	  "  font-family: \"JetBrainsMonoNerdFont\"; "
@@ -364,9 +399,17 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  font-size: 18px; "
 	  "  margin-left: 8px; "
 	  "} ");
+	A(".cb-menu-slider-btn:hover { "
+	  "  background-color: #4c4c4c; "
+	  "} ");
 	A(".cb-menu-slider-btn-active { "
 	  "  background-color: %s; "
 	  "  color: #202124; "
+	  "} ",
+	  state->config.chromeos.accent_color);
+	A(".cb-menu-slider-btn-active:hover { "
+	  "  background-color: %s; "
+	  "  filter: brightness(1.1); "
 	  "} ",
 	  state->config.chromeos.accent_color);
 	A(".cb-menu-slider-btn label { "
@@ -381,7 +424,7 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  min-height: 40px; "
 	  "} ");
 	A(".cb-menu-wifi-list-btn:hover { "
-	  "  background-color: rgba(255,255,255,0.05); "
+	  "  background-color: rgba(255,255,255,0.08); "
 	  "} ");
 	A(".cb-menu-wifi-list-btn label { "
 	  "  color: #e8eaed; "
@@ -404,6 +447,9 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  border-radius: 18px; "
 	  "  min-width: 36px; "
 	  "  min-height: 36px; "
+	  "} ");
+	A(".cb-menu-header-btn:hover { "
+	  "  background-color: #4c4c4c; "
 	  "} ");
 	A(".cb-menu-header-btn label { "
 	  "  font-family: \"JetBrainsMonoNerdFont\"; "
@@ -440,6 +486,9 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  min-height: 36px; "
 	  "  margin-left: 8px; "
 	  "} ");
+	A(".cb-menu-icon-btn:hover { "
+	  "  background-color: #4c4c4c; "
+	  "} ");
 	A(".cb-menu-icon-btn label { "
 	  "  font-family: \"JetBrainsMonoNerdFont\"; "
 	  "  font-size: 18px; "
@@ -452,6 +501,9 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  min-width: 96px; "
 	  "  min-height: 36px; "
 	  "  font-weight: 600; "
+	  "} ");
+	A(".cb-menu-dialog-btn:hover { "
+	  "  background-color: #4c4c4c; "
 	  "} ");
 	A(".cb-menu-dialog-btn-primary { "
 	  "  background-color: %s; "

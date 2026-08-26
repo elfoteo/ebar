@@ -20,6 +20,7 @@ A beautiful, modular, and customizable Hyprland bar written in C with GTK3 and L
 - **Media Player**: Integrated support for `playerctl` with configurable metadata visibility.
 - **Volume Widget**: Circular progress ring around the volume icon; scroll anywhere on it to adjust level. Smooth-scroll (trackpad) supported.
 - **Nightlight Widget**: Toggle-based night light control via `hyprsunset`; scroll to adjust intensity along a configurable curve.
+- **Bluetooth Widget**: Toggle bluetooth on/off with a click; ring glows accent color when enabled.
 
 ## Requirements
 
@@ -132,7 +133,7 @@ icon_occupied   =
 show_empty      = true
 
 [left]
-# Options: workspaces, clock, media, volume, metrics, nightlight, launcher
+# Options: workspaces, clock, media, volume, metrics, nightlight, bluetooth, launcher
 widgets         = workspaces
 
 [center]

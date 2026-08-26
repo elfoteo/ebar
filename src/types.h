@@ -175,6 +175,8 @@ typedef struct {
     GtkWidget *brightness_ring;
     GtkWidget *nightlight_btn;
     GtkWidget *nightlight_ring;
+    GtkWidget *bluetooth_btn;
+    GtkWidget *bluetooth_ring;
     GtkWidget *media_play_btn;
     GtkWidget *media_title_label;
     GtkWidget *media_artist_label;

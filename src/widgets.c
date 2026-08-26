@@ -1,4 +1,5 @@
 #include "widgets.h"
+#include "bluetooth.h"
 #include "icons.h"
 #include "chromeos_bar.h"
 #include "chromeos_popup.h"
@@ -433,6 +434,59 @@ GtkWidget *widget_nightlight(BarWindow *bw, AppState *state) {
 
 /* nightlight_init moved to nightlight.c */
 
+/* ── Bluetooth ─────────────────────────────────────────────────────────── */
+
+static gboolean on_bluetooth_ring_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
+	AppState *state = (AppState *)data;
+	pthread_mutex_lock(&state->mutex);
+	int powered = state->sys_data.bluetooth_powered;
+	pthread_mutex_unlock(&state->mutex);
+	return on_ring_draw_generic(widget, cr, powered ? 100.0 : 0.0, state);
+}
+
+static gboolean on_bluetooth_click(GtkWidget *widget, GdkEventButton *event, gpointer data) {
+	(void)widget;
+	if (event->button != 1)
+		return TRUE;
+	AppState *state = (AppState *)data;
+	pthread_mutex_lock(&state->mutex);
+	int powered = state->sys_data.bluetooth_powered;
+	pthread_mutex_unlock(&state->mutex);
+	bluetooth_set_powered(!powered);
+	fetch_bluetooth(state);
+	update_widgets_idle(state);
+	return TRUE;
+}
+
+GtkWidget *widget_bluetooth(BarWindow *bw, AppState *state) {
+	(void)state;
+	GtkWidget *evbox = gtk_event_box_new();
+	gtk_event_box_set_above_child(GTK_EVENT_BOX(evbox), TRUE);
+	gtk_widget_set_valign(evbox, GTK_ALIGN_CENTER);
+	gtk_widget_add_events(evbox, GDK_BUTTON_PRESS_MASK | GDK_ENTER_NOTIFY_MASK | GDK_LEAVE_NOTIFY_MASK);
+	g_signal_connect(evbox, "button-press-event", G_CALLBACK(on_bluetooth_click), state);
+	g_signal_connect(evbox, "enter-notify-event", G_CALLBACK(on_btn_enter), NULL);
+	g_signal_connect(evbox, "leave-notify-event", G_CALLBACK(on_btn_leave), NULL);
+
+	GtkWidget *overlay = gtk_overlay_new();
+
+	bw->bluetooth_ring = gtk_drawing_area_new();
+	gtk_widget_set_size_request(bw->bluetooth_ring, RING_SIZE, RING_SIZE);
+	gtk_widget_set_halign(bw->bluetooth_ring, GTK_ALIGN_CENTER);
+	gtk_widget_set_valign(bw->bluetooth_ring, GTK_ALIGN_CENTER);
+	g_signal_connect(bw->bluetooth_ring, "draw", G_CALLBACK(on_bluetooth_ring_draw), state);
+	gtk_container_add(GTK_CONTAINER(overlay), bw->bluetooth_ring);
+
+	bw->bluetooth_btn = gtk_label_new(ICON_BLUETOOTH_OFF);
+	gtk_widget_set_halign(bw->bluetooth_btn, GTK_ALIGN_CENTER);
+	gtk_widget_set_valign(bw->bluetooth_btn, GTK_ALIGN_CENTER);
+	gtk_style_context_add_class(gtk_widget_get_style_context(bw->bluetooth_btn), "bluetooth-btn");
+	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), bw->bluetooth_btn);
+
+	gtk_container_add(GTK_CONTAINER(evbox), overlay);
+	return evbox;
+}
+
 static void on_launcher_clicked(GtkWidget *widget, gpointer data) {
 	(void)widget;
 	const char *action = (const char *)data;
@@ -715,6 +769,7 @@ gboolean update_widgets_idle(gpointer data) {
 	int vol_changed = (d.vol != last_d.vol || d.vol_muted != last_d.vol_muted || d.visual_volume != last_d.visual_volume);
 	int brightness_changed = (d.visual_brightness != last_d.visual_brightness);
 	int nightlight_changed = (d.nightlight_level != last_d.nightlight_level || d.nightlight_error != last_d.nightlight_error || d.nightlight_retrying != last_d.nightlight_retrying);
+	int bluetooth_changed = (d.bluetooth_powered != last_d.bluetooth_powered || d.bluetooth_connected != last_d.bluetooth_connected);
 	int media_changed = (d.is_playing != last_d.is_playing || strcmp(d.media_title, last_d.media_title) != 0 ||
 						 strcmp(d.media_artist, last_d.media_artist) != 0);
 
@@ -789,6 +844,25 @@ gboolean update_widgets_idle(gpointer data) {
 			}
 			if (bw->nightlight_ring)
 				gtk_widget_queue_draw(bw->nightlight_ring);
+		}
+
+		if (bluetooth_changed) {
+			int bt_on = d.bluetooth_powered;
+			const char *bt_icon = bt_on ? ICON_BLUETOOTH_ON : ICON_BLUETOOTH_OFF;
+
+			if (bw->bluetooth_btn) {
+				gtk_label_set_text(GTK_LABEL(bw->bluetooth_btn), bt_icon);
+				GtkStyleContext *btctx = gtk_widget_get_style_context(bw->bluetooth_btn);
+				if (bt_on) {
+					gtk_style_context_add_class(btctx, "bluetooth-on");
+					gtk_style_context_remove_class(btctx, "bluetooth-off");
+				} else {
+					gtk_style_context_remove_class(btctx, "bluetooth-on");
+					gtk_style_context_add_class(btctx, "bluetooth-off");
+				}
+			}
+			if (bw->bluetooth_ring)
+				gtk_widget_queue_draw(bw->bluetooth_ring);
 		}
 
 		if (media_changed) {

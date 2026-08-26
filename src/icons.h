@@ -29,6 +29,8 @@
 #define ICON_KEYBOARD            "\xf3\xb0\x8c\x8c" /* keyboard pill + bt keyboard */
 #define ICON_CHECK               "\xf3\xb0\x84\xac" /* list checkmark */
 #define ICON_BLUETOOTH           "\xf3\xb0\x82\xaf" /* bluetooth pill / default device */
+#define ICON_BLUETOOTH_ON        "\xf3\xb0\x82\xaf" /* bluetooth enabled */
+#define ICON_BLUETOOTH_OFF       "\xf3\xb0\x82\xb2" /* bluetooth disabled */
 #define ICON_WIFI_OFF            "\xf3\xb0\xa4\xae" /* wifi off / no adapter */
 #define ICON_CAMERA              "\xf3\xb0\x84\x80" /* screen capture pill + bt camera */
 #define ICON_POWER               "\xf3\xb0\x90\xa5" /* power button + menu entry */

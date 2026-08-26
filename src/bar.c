@@ -160,6 +160,13 @@ void apply_global_css(AppState *state) {
     A(".nightlight-btn.nightlight-error { color: #e05555; margin-left: 4px; margin-top: -1px; } ");
     A(".nightlight-btn.nightlight-retrying { color: #e08855; margin-left: 4px; margin-top: -1px; } ");
 
+    /* bluetooth */
+    A(".bluetooth-btn { background-color: transparent; border-radius: 999px; "
+      "  padding: 0; margin: 0 6px; font-size: 20px; color: %s; } ",
+      cfg->colors.foreground);
+    A(".bluetooth-btn.bluetooth-on { } ");
+    A(".bluetooth-btn.bluetooth-off { } ");
+
     /* media */
     A(".media-box { background-color: %s; "
       "  padding: 0 %dpx; border-radius: 20px; } ",
@@ -201,6 +208,7 @@ static void add_widgets_to_box(GtkWidget *box, const char *csv,
         else if (!strcmp(tok, "volume"))     w = widget_volume(bw, state);
         else if (!strcmp(tok, "metrics"))    w = widget_metrics(bw, state);
         else if (!strcmp(tok, "nightlight")) w = widget_nightlight(bw, state);
+        else if (!strcmp(tok, "bluetooth"))  w = widget_bluetooth(bw, state);
         else if (!strcmp(tok, "brightness")) w = widget_brightness(bw, state);
         else if (!strcmp(tok, "launcher"))   w = widget_launcher(bw, state);
 

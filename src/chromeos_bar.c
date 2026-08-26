@@ -42,60 +42,70 @@ static void on_launcher_btn_clicked(GtkWidget *widget, gpointer data) {
 }
 
 void apply_chromeos_css(AppState *state) {
-	char css[16384];
-	int n = 0;
+	static char *cached_css = NULL;
+	static char cached_font[64] = "";
+	static char cached_accent[32] = "";
+
+	if (!cached_css || strcmp(cached_font, state->config.font.family) != 0 ||
+	    strcmp(cached_accent, state->config.chromeos.accent_color) != 0) {
+		g_free(cached_css);
+		g_strlcpy(cached_font, state->config.font.family, sizeof(cached_font));
+		g_strlcpy(cached_accent, state->config.chromeos.accent_color, sizeof(cached_accent));
+
+		char css[16384];
+		int n = 0;
 
 #define A(...) n += snprintf(css + n, (int)sizeof(css) - n, __VA_ARGS__)
 
-	A("* { font-family: \"%s\"; font-weight: 600; background: none; box-shadow: none; border: none; } ", state->config.font.family);
-	A("window, .background { background-color: transparent; } ");
+		A("* { font-family: \"%s\"; font-weight: 600; background: none; box-shadow: none; border: none; } ", state->config.font.family);
+		A("window, .background { background-color: transparent; } ");
 
-	A(".cb-pill { background-color: #505153; color: #E8EAED; border-radius: 18px; "
-	  "  padding: 0 8px; font-size: 14px; font-weight: 600; min-height: 36px; } ");
-	A(".cb-pill:hover { background-color: #616264; } ");
-	A(".cb-pill.active { background-color: %s; color: #202124; } ", state->config.chromeos.accent_color);
-	A(".cb-pill.active label { color: #202124; } ");
-	/* Semi-touch: date right corners and sys left corners flatten toward each other */
-	A("#cb-date { border-radius: 18px 6px 6px 18px; } ");
-	A("#cb-sys  { border-radius: 6px 18px 18px 6px; } ");
+		A(".cb-pill { background-color: #505153; color: #E8EAED; border-radius: 18px; "
+		  "  padding: 0 8px; font-size: 14px; font-weight: 600; min-height: 36px; } ");
+		A(".cb-pill:hover { background-color: #616264; } ");
+		A(".cb-pill.active { background-color: %s; color: #202124; } ", state->config.chromeos.accent_color);
+		A(".cb-pill.active label { color: #202124; } ");
+		A("#cb-date { border-radius: 18px 6px 6px 18px; } ");
+		A("#cb-sys  { border-radius: 6px 18px 18px 6px; } ");
 
-	A(".cb-circle { background-color: #505153; color: #E8EAED; border-radius: 18px; "
-	  "  min-width: 36px; min-height: 36px; padding: 0; font-size: 14px; font-weight: 600; } ");
-	A(".cb-circle:hover { background-color: #616264; } ");
-	A(".cb-circle-icon { font-size: 16px; } ");
-	A(".cb-launcher-btn { font-weight: 900; font-size: 24px; } ");
-	A(".cb-launcher-btn.active { background-color: %s; } ", state->config.chromeos.accent_color);
+		A(".cb-circle { background-color: #505153; color: #E8EAED; border-radius: 18px; "
+		  "  min-width: 36px; min-height: 36px; padding: 0; font-size: 14px; font-weight: 600; } ");
+		A(".cb-circle:hover { background-color: #616264; } ");
+		A(".cb-circle-icon { font-size: 16px; } ");
+		A(".cb-launcher-btn { font-weight: 900; font-size: 24px; } ");
+		A(".cb-launcher-btn.active { background-color: %s; } ", state->config.chromeos.accent_color);
 
-	A(".cb-app-btn { background: transparent; border-radius: 18px; "
-	  "  min-width: 36px; min-height: 36px; padding: 0; margin: 0; "
-	  "  border: none; outline: none; box-shadow: none; } ");
-	A(".cb-app-btn image { padding: 0; margin: 0; -gtk-icon-style: requested; } ");
-	A(".cb-app-btn:hover { background-color: #616264; } ");
+		A(".cb-app-btn { background: transparent; border-radius: 18px; "
+		  "  min-width: 36px; min-height: 36px; padding: 0; margin: 0; "
+		  "  border: none; outline: none; box-shadow: none; } ");
+		A(".cb-app-btn image { padding: 0; margin: 0; -gtk-icon-style: requested; } ");
+		A(".cb-app-btn:hover { background-color: #616264; } ");
 
-	A(".cb-desk-pill { background-color: #505153; color: #E8EAED; border-radius: 18px; "
-	  "  padding: 0 4px; min-height: 36px; } ");
-	A(".cb-desk-name { background-color: #616264; color: #E8EAED; border-radius: 14px; "
-	  "  font-size: 13px; font-weight: 600; padding: 0 10px; min-height: 28px; } ");
-	A(".cb-desk-arrow { background: transparent; color: #E8EAED; border-radius: 8px; "
-	  "  min-width: 15px; min-height: 20px; margin: 0 0px; padding: 0; font-size: 11px; "
-	  "  border: none; box-shadow: none; font-family: \"JetBrainsMonoNerdFont\"; } ");
-	A(".cb-desk-arrow:hover { background-color: rgba(255,255,255,0.12); } ");
-	/* Add a specific background and corner radius rule for each monitor */
-	for (GList *l = state->bar_windows; l != NULL; l = l->next) {
-		BarWindow *bw = (BarWindow *)l->data;
-		if (bw->monitor) {
-			GdkRectangle mgeom;
-			gdk_monitor_get_geometry(bw->monitor, &mgeom);
-			A("#chromebook-bar-%d-%d { background-color: #424348; border-radius: 24px 24px 0 0; padding: 6px; transition: border-radius "
-			  "200ms ease; } ",
-			  mgeom.x, mgeom.y);
-			A("#chromebook-bar-%d-%d.fullscreen-mode { border-radius: 0; } ", mgeom.x, mgeom.y);
+		A(".cb-desk-pill { background-color: #505153; color: #E8EAED; border-radius: 18px; "
+		  "  padding: 0 4px; min-height: 36px; } ");
+		A(".cb-desk-name { background-color: #616264; color: #E8EAED; border-radius: 14px; "
+		  "  font-size: 13px; font-weight: 600; padding: 0 10px; min-height: 28px; } ");
+		A(".cb-desk-arrow { background: transparent; color: #E8EAED; border-radius: 8px; "
+		  "  min-width: 15px; min-height: 20px; margin: 0 0px; padding: 0; font-size: 11px; "
+		  "  border: none; box-shadow: none; font-family: \"JetBrainsMonoNerdFont\"; } ");
+		A(".cb-desk-arrow:hover { background-color: rgba(255,255,255,0.12); } ");
+		for (GList *l = state->bar_windows; l != NULL; l = l->next) {
+			BarWindow *bw = (BarWindow *)l->data;
+			if (bw->monitor) {
+				GdkRectangle mgeom;
+				gdk_monitor_get_geometry(bw->monitor, &mgeom);
+				A("#chromebook-bar-%d-%d { background-color: #424348; border-radius: 24px 24px 0 0; padding: 6px; transition: border-radius "
+				  "200ms ease; } ",
+				  mgeom.x, mgeom.y);
+				A("#chromebook-bar-%d-%d.fullscreen-mode { border-radius: 0; } ", mgeom.x, mgeom.y);
+			}
 		}
-	}
 
 #undef A
+		cached_css = g_strdup(css);
+	}
 
-	apply_css_from_string(css, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+	apply_css_from_string(cached_css, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 
 	/* Apply or remove the fullscreen-mode class based on state */
 	for (GList *l = state->bar_windows; l != NULL; l = l->next) {
@@ -283,7 +293,7 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 	LauncherCtx *lctx = g_new0(LauncherCtx, 1);
 	lctx->bw = bw;
 	lctx->state = state;
-	g_signal_connect(btn_o, "clicked", G_CALLBACK(on_launcher_btn_clicked), lctx);
+	g_signal_connect_data(btn_o, "clicked", G_CALLBACK(on_launcher_btn_clicked), lctx, (GClosureNotify)g_free, 0);
 
 	/* ── Left area: desk switcher pill ── */
 	GtkWidget *desk_pill = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);

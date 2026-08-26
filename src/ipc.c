@@ -89,13 +89,21 @@ char *hyprctl_request(const char *cmd) {
     if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) { close(fd); return NULL; }
     if (write(fd, cmd, strlen(cmd)) < 0)                     { close(fd); return NULL; }
 
-    char *buf = malloc(HYPR_SOCKET_BUFFER_SIZE);
+    size_t capacity = HYPR_SOCKET_BUFFER_SIZE;
+    char *buf = malloc(capacity);
     if (!buf) { close(fd); return NULL; }
 
     size_t total = 0;
-    const size_t capacity = HYPR_SOCKET_BUFFER_SIZE;
     ssize_t n;
-    while (total < capacity - 1 && (n = read(fd, buf + total, capacity - total - 1)) > 0) total += (size_t)n;
+    while ((n = read(fd, buf + total, capacity - total - 1)) > 0) {
+        total += (size_t)n;
+        if (total >= capacity - 1) {
+            capacity *= 2;
+            char *tmp = realloc(buf, capacity);
+            if (!tmp) { buf[total] = '\0'; close(fd); return buf; }
+            buf = tmp;
+        }
+    }
     buf[total] = '\0';
     close(fd);
     return buf;

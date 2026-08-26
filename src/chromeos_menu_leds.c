@@ -131,6 +131,7 @@ void chromeos_menu_show_leds(BarWindow *bw, AppState *state) {
 		row_ctx->led = leds[i];
 
 		GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+		g_object_set_data_full(G_OBJECT(row), "led_row_ctx", row_ctx, g_free);
 		gtk_widget_set_margin_start(row, 8);
 		gtk_widget_set_margin_end(row, 8);
 		gtk_widget_set_margin_top(row, 6);

@@ -70,11 +70,21 @@ int find_backlight_path(const char *filename, char *out, size_t outsz) {
 }
 
 void apply_css_from_string(const char *css, guint priority) {
-	GtkCssProvider *provider = gtk_css_provider_new();
+	static GtkCssProvider *provider = NULL;
+	static guint provider_priority = 0;
+	if (!provider) {
+		provider = gtk_css_provider_new();
+		provider_priority = priority;
+		gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
+			GTK_STYLE_PROVIDER(provider), priority);
+	} else if (provider_priority != priority) {
+		gtk_style_context_remove_provider_for_screen(gdk_screen_get_default(),
+			GTK_STYLE_PROVIDER(provider));
+		provider_priority = priority;
+		gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
+			GTK_STYLE_PROVIDER(provider), priority);
+	}
 	gtk_css_provider_load_from_data(provider, css, -1, NULL);
-	gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
-		GTK_STYLE_PROVIDER(provider), priority);
-	g_object_unref(provider);
 }
 
 void apply_forcergbx_bypass(const char *window_title, const char *layer_name) {

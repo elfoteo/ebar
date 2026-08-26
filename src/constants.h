@@ -27,7 +27,7 @@
 #define POPUP_AUTO_HIDE_TIMEOUT_MS 3000
 #define POPUP_FADE_STEP 0.12
 
-#define HYPR_SOCKET_BUFFER_SIZE 131072
+#define HYPR_SOCKET_BUFFER_SIZE 32768
 
 #define DEFAULT_TEMP_PATH "/sys/class/thermal/thermal_zone1/temp"
 

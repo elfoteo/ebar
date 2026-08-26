@@ -29,8 +29,10 @@ static void pulse_sink_info_callback(pa_context *c, const pa_sink_info *i, int e
 
 	/* A newer query chain has been issued meanwhile: drop this stale response
 	 * instead of overwriting state with outdated volume/mute values. */
-	if (q->seq != ps->query_seq)
+	if (q->seq != ps->query_seq) {
+		g_free(q);
 		return;
+	}
 
 	pthread_mutex_lock(&state->mutex);
 	int was_init = state->sys_data.vol_initialized;

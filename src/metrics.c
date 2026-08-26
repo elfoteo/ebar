@@ -23,7 +23,7 @@ static int layout_has_gpu(Config *cfg) {
     return 0;
 }
 
-static void fetch_system_metrics(AppState *state) {
+static int fetch_system_metrics(AppState *state) {
     double ram_val = 0, cpu_val = 0, disk_val = 0, temp_val = 0;
     float ram_total = 0, ram_avail = 0;
 
@@ -139,6 +139,9 @@ static void fetch_system_metrics(AppState *state) {
     }
 
     pthread_mutex_lock(&state->mutex);
+    int changed = (ram_val != state->sys_data.ram_val || cpu_val != state->sys_data.cpu_val ||
+                   disk_val != state->sys_data.disk_val || temp_val != state->sys_data.temp_val ||
+                   gpu_val != state->sys_data.gpu_val || gpu_temp_val != state->sys_data.gpu_temp_val);
     state->sys_data.ram_val = ram_val;
     state->sys_data.cpu_val = cpu_val;
     state->sys_data.disk_val = disk_val;
@@ -148,6 +151,7 @@ static void fetch_system_metrics(AppState *state) {
     state->sys_data.ram_total = ram_total;
     state->sys_data.ram_avail = ram_avail;
     pthread_mutex_unlock(&state->mutex);
+    return changed;
 }
 
 void fetch_brightness(AppState *state) {
@@ -234,12 +238,14 @@ void *metrics_thread_func(void *data) {
     AppState *state = (AppState *)data;
     int count = 0;
     while (1) {
-        fetch_system_metrics(state);
+        int changed = fetch_system_metrics(state);
         if (count % 5 == 0) {
             fetch_battery(state);
             fetch_bluetooth(state);
+            changed = 1;
         }
-        g_idle_add(update_widgets_idle, state);
+        if (changed)
+            g_idle_add(update_widgets_idle, state);
         sleep(1);
         count++;
     }

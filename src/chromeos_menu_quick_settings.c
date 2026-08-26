@@ -1,6 +1,7 @@
 #include "bluetooth.h"
 #include "chromeos_menu.h"
 #include "chromeos_menu_internal.h"
+#include "icons.h"
 #include "ipc.h"
 #include "metrics.h"
 #include "util.h"
@@ -231,7 +232,7 @@ static void on_keyboard_arrow_clicked(GtkWidget *widget, gpointer data) {
 		gtk_style_context_add_class(gtk_widget_get_style_context(btn), "cb-menu-wifi-list-btn");
 
 		GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-		GtkWidget *icon = gtk_label_new("󰌌");
+		GtkWidget *icon = gtk_label_new(ICON_KEYBOARD);
 		gtk_style_context_add_class(gtk_widget_get_style_context(icon), "icon");
 		gtk_box_pack_start(GTK_BOX(row), icon, FALSE, FALSE, 0);
 
@@ -240,7 +241,7 @@ static void on_keyboard_arrow_clicked(GtkWidget *widget, gpointer data) {
 		gtk_box_pack_start(GTK_BOX(row), name, TRUE, TRUE, 0);
 
 		if (g_ascii_strcasecmp(active, label) == 0) {
-			GtkWidget *check = gtk_label_new("󰄬");
+			GtkWidget *check = gtk_label_new(ICON_CHECK);
 			gtk_style_context_add_class(gtk_widget_get_style_context(check), "icon");
 			gtk_box_pack_end(GTK_BOX(row), check, FALSE, FALSE, 0);
 		}
@@ -292,9 +293,7 @@ static void on_screenshot_clicked(GtkWidget *widget, gpointer data) {
 	g_timeout_add(500, delayed_screenshot, cmd);
 }
 
-void chromeos_menu_refresh_bluetooth_state(AppState *state) {
-	fetch_bluetooth(state);
-}
+void chromeos_menu_refresh_bluetooth_state(AppState *state) { fetch_bluetooth(state); }
 
 static void show_bluetooth_menu(BarWindow *bw, AppState *state);
 
@@ -433,13 +432,13 @@ static void show_bluetooth_menu(BarWindow *bw, AppState *state) {
 		gtk_style_context_add_class(gtk_widget_get_style_context(btn), "cb-menu-wifi-list-btn");
 
 		GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-		GtkWidget *icon = gtk_label_new(device->icon[0] ? device->icon : "󰂯");
+		GtkWidget *icon = gtk_label_new(device->icon[0] ? device->icon : ICON_BLUETOOTH);
 		gtk_style_context_add_class(gtk_widget_get_style_context(icon), "icon");
 		gtk_box_pack_start(GTK_BOX(row), icon, FALSE, FALSE, 0);
 
 		GtkWidget *text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 		GtkWidget *name = gtk_label_new(device->name);
-		chromeos_menu_ellipsize_label(name, 28);
+		chromeos_menu_ellipsize_label(name, 48);
 		gtk_widget_set_halign(name, GTK_ALIGN_START);
 		gtk_box_pack_start(GTK_BOX(text), name, FALSE, FALSE, 0);
 
@@ -456,7 +455,7 @@ static void show_bluetooth_menu(BarWindow *bw, AppState *state) {
 		gtk_box_pack_start(GTK_BOX(row), text, TRUE, TRUE, 0);
 
 		if (device->connected && !is_connecting) {
-			GtkWidget *check = gtk_label_new("󰄬");
+			GtkWidget *check = gtk_label_new(ICON_CHECK);
 			gtk_style_context_add_class(gtk_widget_get_style_context(check), "icon");
 			gtk_box_pack_end(GTK_BOX(row), check, FALSE, FALSE, 0);
 		}
@@ -524,7 +523,7 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 	SystemData d = state->sys_data;
 	pthread_mutex_unlock(&state->mutex);
 
-	const char *w_icon = "󰤮"; /* Off / No Adapter */
+	const char *w_icon = ICON_WIFI_OFF; /* Off / No Adapter */
 	const char *w_subtitle = "Off";
 	int wifi_active = 0;
 	int wifi_pill_sensitive = 1;
@@ -540,7 +539,7 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 			w_icon = get_wifi_icon(d.wifi_strength);
 			w_subtitle = d.wifi_ssid[0] ? d.wifi_ssid : "Connected";
 		} else {
-			w_icon = "󰤯"; /* Disconnected (outline) */
+			w_icon = ICON_WIFI_0; /* Disconnected (outline) */
 			w_subtitle = "Disconnected";
 		}
 	}
@@ -561,8 +560,8 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 		g_signal_connect(bw->cb_menu_wifi_arrow, "destroy", G_CALLBACK(gtk_widget_destroyed), &bw->cb_menu_wifi_arrow);
 	gtk_grid_attach(GTK_GRID(grid), bw->cb_menu_wifi_pill, 0, 0, 2, 1);
 
-	GtkWidget *screenshot =
-		chromeos_menu_create_pill("󰄀", "Screen capture", NULL, FALSE, NULL, NULL, NULL, G_CALLBACK(on_screenshot_clicked), NULL, state);
+	GtkWidget *screenshot = chromeos_menu_create_pill(ICON_CAMERA, "Screen capture", NULL, FALSE, NULL, NULL, NULL,
+													  G_CALLBACK(on_screenshot_clicked), NULL, state);
 	gtk_grid_attach(GTK_GRID(grid), screenshot, 2, 0, 2, 1);
 
 	pthread_mutex_lock(&state->mutex);
@@ -584,13 +583,13 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 	}
 
 	GtkWidget *bluetooth =
-		chromeos_menu_create_pill("󰂯", "Bluetooth", bluetooth_subtitle, bluetooth_exists && bluetooth_powered, NULL, NULL, NULL,
+		chromeos_menu_create_pill(ICON_BLUETOOTH, "Bluetooth", bluetooth_subtitle, bluetooth_exists && bluetooth_powered, NULL, NULL, NULL,
 								  G_CALLBACK(on_bluetooth_clicked), G_CALLBACK(on_bluetooth_arrow_clicked), ctx);
 	gtk_grid_attach(GTK_GRID(grid), bluetooth, 0, 1, 2, 1);
 
-	GtkWidget *keyboard = chromeos_menu_create_pill("󰌌", "Keyboard", state->sys_data.kb_layout[0] ? state->sys_data.kb_layout : "US",
-													FALSE, &bw->cb_menu_kb_label, NULL, NULL, G_CALLBACK(on_keyboard_clicked),
-													G_CALLBACK(on_keyboard_arrow_clicked), ctx);
+	GtkWidget *keyboard = chromeos_menu_create_pill(
+		ICON_KEYBOARD, "Keyboard", state->sys_data.kb_layout[0] ? state->sys_data.kb_layout : "US", FALSE, &bw->cb_menu_kb_label, NULL,
+		NULL, G_CALLBACK(on_keyboard_clicked), G_CALLBACK(on_keyboard_arrow_clicked), ctx);
 	if (bw->cb_menu_kb_label)
 		g_signal_connect(bw->cb_menu_kb_label, "destroy", G_CALLBACK(gtk_widget_destroyed), &bw->cb_menu_kb_label);
 	gtk_grid_attach(GTK_GRID(grid), keyboard, 2, 1, 2, 1);
@@ -605,7 +604,7 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 
 	GtkWidget *power_btn = gtk_button_new();
 	gtk_style_context_add_class(gtk_widget_get_style_context(power_btn), "cb-menu-power");
-	gtk_container_add(GTK_CONTAINER(power_btn), gtk_label_new("󰐥 "));
+	gtk_container_add(GTK_CONTAINER(power_btn), gtk_label_new(ICON_POWER " " ICON_POWER_PLUG));
 
 	GtkWidget *power_popover = gtk_popover_new(power_btn);
 	gtk_popover_set_position(GTK_POPOVER(power_popover), GTK_POS_TOP);
@@ -619,9 +618,9 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 		const char *label;
 		const char *cmd;
 	} power_opts[] = {
-		{"󰐥", "Shut down", "systemctl poweroff"},
-		{"󰤄", "Suspend", "systemctl suspend"},
-		{"󰜉", "Restart", "systemctl reboot"},
+		{ICON_POWER, "Shut down", "systemctl poweroff"},
+		{ICON_SLEEP, "Suspend", "systemctl suspend"},
+		{ICON_RESTART, "Restart", "systemctl reboot"},
 	};
 	for (int i = 0; i < 3; i++) {
 		GtkWidget *opt = gtk_button_new();
@@ -656,12 +655,13 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 
 	GtkWidget *settings_btn = gtk_button_new();
 	gtk_style_context_add_class(gtk_widget_get_style_context(settings_btn), "cb-menu-settings");
+	gtk_widget_set_valign(settings_btn, GTK_ALIGN_CENTER);
 	GdkPixbuf *settings_pix = create_pixbuf_from_svg(SETTINGS_SVG, 22);
 	if (settings_pix) {
 		gtk_container_add(GTK_CONTAINER(settings_btn), gtk_image_new_from_pixbuf(settings_pix));
 		g_object_unref(settings_pix);
 	} else {
-		gtk_container_add(GTK_CONTAINER(settings_btn), gtk_label_new("󰒓"));
+		gtk_container_add(GTK_CONTAINER(settings_btn), gtk_label_new(ICON_SETTINGS));
 	}
 	{
 		MenuCtx *sctx = g_new0(MenuCtx, 1);

@@ -1,4 +1,5 @@
 #include "widgets.h"
+#include "icons.h"
 #include "chromeos_bar.h"
 #include "chromeos_popup.h"
 #include "constants.h"
@@ -179,9 +180,9 @@ GtkWidget *widget_media(BarWindow *bw, AppState *state) {
 
 	gtk_widget_set_valign(media_box, GTK_ALIGN_CENTER);
 
-	GtkWidget *pbtn = gtk_button_new_with_label("󰒮");
-	bw->media_play_btn = gtk_button_new_with_label("󰐊");
-	GtkWidget *nbtn = gtk_button_new_with_label("󰒭");
+	GtkWidget *pbtn = gtk_button_new_with_label(ICON_MEDIA_PREV);
+	bw->media_play_btn = gtk_button_new_with_label(ICON_MEDIA_PLAY);
+	GtkWidget *nbtn = gtk_button_new_with_label(ICON_MEDIA_NEXT);
 
 	gtk_widget_set_can_focus(pbtn, FALSE);
 	gtk_widget_set_can_focus(bw->media_play_btn, FALSE);
@@ -306,7 +307,7 @@ static gboolean on_brightness_ring_draw(GtkWidget *widget, cairo_t *cr, gpointer
 
 GtkWidget *widget_brightness(BarWindow *bw, AppState *state) {
 	GtkWidget *overlay = gtk_overlay_new();
-	GtkWidget *btn = gtk_label_new("󰃟");
+	GtkWidget *btn = gtk_label_new(ICON_BRIGHTNESS);
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn), "nightlight-btn"); // Reuse nightlight-btn style
 	bw->brightness_btn = btn;
 
@@ -502,7 +503,7 @@ static GtkWidget *create_metric_box(const char *icon_str, GtkWidget **out_widget
 GtkWidget *widget_metrics(BarWindow *bw, AppState *state) {
 	GtkWidget *grid = gtk_grid_new();
 	gtk_widget_set_valign(grid, GTK_ALIGN_CENTER);
-	const char *icons[] = {"", "", "󰢮", "󰋊", "󰔏", "󰔏"};
+	const char *icons[] = {ICON_METRIC_RAM, ICON_METRIC_CPU, ICON_METRIC_GPU, ICON_METRIC_DISK, ICON_METRIC_TEMP, ICON_METRIC_TEMP};
 	for (int r = 0; r < 2; r++) {
 		for (int c = 0; c < 3; c++) {
 			MetricType type = state->config.metrics.layout[r][c];
@@ -611,28 +612,28 @@ void update_metric_widget(GtkWidget *widget, MetricType type, SystemData *d, int
 
 const char *get_wifi_icon(int q) {
 	if (q < 0)
-		return "󰤯";
+		return ICON_WIFI_0;
 	if (q == 0)
-		return "󰤯";
+		return ICON_WIFI_0;
 	if (q < 25)
-		return "󰤟";
+		return ICON_WIFI_1;
 	if (q < 50)
-		return "󰤢";
+		return ICON_WIFI_2;
 	if (q < 75)
-		return "󰤥";
-	return "󰤨";
+		return ICON_WIFI_3;
+	return ICON_WIFI_4;
 }
 
 const char *get_battery_icon(int cap, int charging) {
 	/* Index 0 = ≤10%, index 9 = 91-100% */
 	static const char *discharging[10] = {
-		"󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹",
+		ICON_BATTERY_10, ICON_BATTERY_20, ICON_BATTERY_30, ICON_BATTERY_40, ICON_BATTERY_50, ICON_BATTERY_60, ICON_BATTERY_70, ICON_BATTERY_80, ICON_BATTERY_90, ICON_BATTERY_100,
 	};
 	static const char *charging_icons[10] = {
-		"󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅",
+		ICON_BATTERY_CHG_10, ICON_BATTERY_CHG_20, ICON_BATTERY_CHG_30, ICON_BATTERY_CHG_40, ICON_BATTERY_CHG_50, ICON_BATTERY_CHG_60, ICON_BATTERY_CHG_70, ICON_BATTERY_CHG_80, ICON_BATTERY_CHG_90, ICON_BATTERY_CHG_100,
 	};
 	if (cap < 0)
-		return "󱟩"; /* no battery present */
+		return ICON_BATTERY_UNKNOWN; /* no battery present */
 	/* Use a balanced round-to-nearest mapping:
 	 * >= 95 -> idx 9 (100%)
 	 * 85-94 -> idx 8 (90%)
@@ -763,7 +764,7 @@ gboolean update_widgets_idle(gpointer data) {
 			int nl_error = d.nightlight_error;
 			int nl_retrying = d.nightlight_retrying;
 			int nl_active = (d.nightlight_level > 0 || d.nightlight_on);
-			const char *nl_icon = nl_active ? "󰖔" : "󰖙";
+			const char *nl_icon = nl_active ? ICON_NIGHTLIGHT_ON : ICON_NIGHTLIGHT_OFF;
 
 			if (bw->nightlight_btn) {
 				gtk_label_set_text(GTK_LABEL(bw->nightlight_btn), nl_icon);
@@ -792,7 +793,7 @@ gboolean update_widgets_idle(gpointer data) {
 
 		if (media_changed) {
 			if (bw->media_play_btn)
-				gtk_button_set_label(GTK_BUTTON(bw->media_play_btn), d.is_playing ? "󰏤" : "󰐊");
+				gtk_button_set_label(GTK_BUTTON(bw->media_play_btn), d.is_playing ? ICON_MEDIA_PAUSE : ICON_MEDIA_PLAY);
 			int has_media = (d.media_title[0] != '\0');
 			int show_title = has_media && state->config.media.show_title;
 			int show_artist = has_media && state->config.media.show_artist && d.media_artist[0] != '\0';

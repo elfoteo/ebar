@@ -1,4 +1,5 @@
 #include "chromeos_menu_internal.h"
+#include "icons.h"
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,18 +83,20 @@ typedef struct {
 	gint updating;
 } LedRowCtx;
 
-static void on_led_toggle(GtkWidget *widget, gpointer data) {
+static void on_led_toggle(GObject *object, GParamSpec *pspec, gpointer data) {
+	(void)pspec;
 	LedRowCtx *ctx = (LedRowCtx *)data;
-	int active = gtk_switch_get_active(GTK_SWITCH(widget));
+	int active = gtk_switch_get_active(GTK_SWITCH(object));
 	int target = active ? ctx->led.max_brightness : 0;
 	write_led_brightness(ctx->led.sysfs_path, target);
 }
 
 static void on_led_slider_changed(GtkRange *range, gpointer data) {
 	LedRowCtx *ctx = (LedRowCtx *)data;
-	if (ctx->updating)
+	if (ctx->updating || slider_is_updating(range))
 		return;
-	int val = (int)gtk_range_get_value(range);
+	/* Slider is normalized to 0..100; map back to sysfs units */
+	int val = (int)(slider_get_actual_value(range) / 100.0 * ctx->led.max_brightness + 0.5);
 	write_led_brightness(ctx->led.sysfs_path, val);
 }
 
@@ -145,15 +148,14 @@ void chromeos_menu_show_leds(BarWindow *bw, AppState *state) {
 			g_signal_connect(toggle, "notify::active", G_CALLBACK(on_led_toggle), row_ctx);
 			gtk_box_pack_end(GTK_BOX(row), toggle, FALSE, FALSE, 0);
 		} else {
-			GtkWidget *slider = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, leds[i].max_brightness, 1);
-			gtk_scale_set_draw_value(GTK_SCALE(slider), FALSE);
-			gtk_style_context_add_class(gtk_widget_get_style_context(slider), "cb-menu-slider");
-			gtk_widget_set_size_request(slider, 160, -1);
+			/* Same style as the volume/brightness sliders: icon overlay plus
+			 * circle-shaped fill at minimum. Normalized to 0..100. */
+			int pct = (int)(cur * 100.0 / leds[i].max_brightness + 0.5);
 			row_ctx->updating = 1;
-			gtk_range_set_value(GTK_RANGE(slider), cur);
+			GtkWidget *slider_overlay =
+				create_menu_slider_overlay(ICON_LIGHTBULB, pct, G_CALLBACK(on_led_slider_changed), row_ctx, NULL);
 			row_ctx->updating = 0;
-			g_signal_connect(slider, "value-changed", G_CALLBACK(on_led_slider_changed), row_ctx);
-			gtk_box_pack_end(GTK_BOX(row), slider, FALSE, FALSE, 0);
+			gtk_box_pack_end(GTK_BOX(row), slider_overlay, TRUE, TRUE, 0);
 		}
 
 		gtk_box_pack_start(GTK_BOX(content), row, FALSE, FALSE, 0);

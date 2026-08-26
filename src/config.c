@@ -1,4 +1,5 @@
 #include "config.h"
+#include "icons.h"
 #include "constants.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,8 +45,8 @@ void config_save_default(const char *path) {
 
     fprintf(f, "[workspaces]\n");
     fprintf(f, "count           = 10\n");
-    fprintf(f, "icon_empty      = \n");
-    fprintf(f, "icon_occupied   = \n");
+    fprintf(f, "icon_empty      = " ICON_WS_EMPTY "\n");
+    fprintf(f, "icon_occupied   = " ICON_WS_OCCUPIED "\n");
     fprintf(f, "show_empty      = true\n\n");
 
     fprintf(f, "[left]\n");

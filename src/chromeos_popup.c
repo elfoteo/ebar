@@ -1,4 +1,5 @@
 #include "chromeos_popup.h"
+#include "icons.h"
 #include "chromeos_menu.h"
 #include "chromeos_menu_internal.h"
 #include "gtk-layer-shell.h"
@@ -245,12 +246,12 @@ static void trigger_popup_generic(BarWindow *bw, int type, double val, const cha
 
 		/* Create both sliders upfront but hidden */
 		GtkWidget *b_scale = NULL;
-		bw->popup_slider_box[POPUP_TYPE_BRIGHTNESS] = create_popup_slider("󰃟", 0, G_CALLBACK(on_popup_brightness_changed), bw, &b_scale);
+		bw->popup_slider_box[POPUP_TYPE_BRIGHTNESS] = create_popup_slider(ICON_BRIGHTNESS, 0, G_CALLBACK(on_popup_brightness_changed), bw, &b_scale);
 		bw->popup_slider_range[POPUP_TYPE_BRIGHTNESS] = b_scale;
 		gtk_box_pack_start(GTK_BOX(inner), bw->popup_slider_box[POPUP_TYPE_BRIGHTNESS], FALSE, FALSE, 0);
 
 		GtkWidget *v_scale = NULL;
-		bw->popup_slider_box[POPUP_TYPE_VOLUME] = create_popup_slider("󰕾", 0, G_CALLBACK(on_popup_volume_changed), bw, &v_scale);
+		bw->popup_slider_box[POPUP_TYPE_VOLUME] = create_popup_slider(ICON_VOLUME_HIGH, 0, G_CALLBACK(on_popup_volume_changed), bw, &v_scale);
 		bw->popup_slider_range[POPUP_TYPE_VOLUME] = v_scale;
 		gtk_box_pack_start(GTK_BOX(inner), bw->popup_slider_box[POPUP_TYPE_VOLUME], FALSE, FALSE, 0);
 
@@ -306,7 +307,7 @@ gboolean trigger_brightness_popup_idle(gpointer data) {
 	}
 	pthread_mutex_unlock(&state->mutex);
 
-	trigger_popup_generic(bw, POPUP_TYPE_BRIGHTNESS, b, "󰃟", FALSE);
+	trigger_popup_generic(bw, POPUP_TYPE_BRIGHTNESS, b, ICON_BRIGHTNESS, FALSE);
 
 	if (bw->popup_window) {
 		gtk_widget_show_now(bw->popup_window);

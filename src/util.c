@@ -1,4 +1,5 @@
 #include "util.h"
+#include "icons.h"
 #include "chromeos_menu_internal.h"
 #include "constants.h"
 #include "ipc.h"
@@ -47,12 +48,12 @@ void setup_transparent_window(GtkWidget *win) {
 
 const char *get_volume_icon(float vol, int muted) {
 	if (muted || vol == 0)
-		return "󰝟";
+		return ICON_VOLUME_MUTE;
 	if (vol <= 33)
-		return "󰕿";
+		return ICON_VOLUME_LOW;
 	if (vol <= 66)
-		return "󰖀";
-	return "󰕾";
+		return ICON_VOLUME_MEDIUM;
+	return ICON_VOLUME_HIGH;
 }
 
 int find_backlight_path(const char *filename, char *out, size_t outsz) {

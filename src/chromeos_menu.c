@@ -2,6 +2,7 @@
 #include "chromeos_launcher.h"
 #include "chromeos_menu_internal.h"
 #include "gtk-layer-shell.h"
+#include "icons.h"
 #include "ipc.h"
 #include "util.h"
 #include <gdk/gdkkeysyms.h>
@@ -25,7 +26,7 @@ void chromeos_menu_clear(BarWindow *bw) {
 }
 
 GtkWidget *chromeos_menu_create_header_back_button(void) {
-	GtkWidget *back_btn = gtk_button_new_with_label("󰁍");
+	GtkWidget *back_btn = gtk_button_new_with_label(ICON_ARROW_LEFT);
 	gtk_style_context_add_class(gtk_widget_get_style_context(back_btn), "cb-menu-header-btn");
 	gtk_widget_set_size_request(back_btn, 36, 36);
 	gtk_widget_set_halign(back_btn, GTK_ALIGN_START);
@@ -125,7 +126,7 @@ GtkWidget *chromeos_menu_create_pill(const char *icon, const char *title, const 
 	gtk_box_pack_start(GTK_BOX(box), main_btn, TRUE, TRUE, 0);
 
 	if (on_arrow_click) {
-		GtkWidget *arrow_btn = gtk_button_new_with_label("");
+		GtkWidget *arrow_btn = gtk_button_new_with_label(ICON_CHEVRON_RIGHT);
 		if (arrow_out)
 			*arrow_out = arrow_btn;
 		gtk_style_context_add_class(gtk_widget_get_style_context(arrow_btn), "cb-menu-pill-arrow");
@@ -135,7 +136,7 @@ GtkWidget *chromeos_menu_create_pill(const char *icon, const char *title, const 
 	} else {
 		if (arrow_out)
 			*arrow_out = NULL;
-		GtkWidget *arrow = gtk_label_new("");
+		GtkWidget *arrow = gtk_label_new(ICON_CHEVRON_RIGHT);
 		gtk_style_context_add_class(gtk_widget_get_style_context(arrow), "subtitle");
 		gtk_widget_set_margin_end(arrow, 12);
 		gtk_box_pack_end(GTK_BOX(box), arrow, FALSE, FALSE, 0);
@@ -258,6 +259,13 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  background: none; "
 	  "  border-left: 1px solid rgba(255,255,255,0.1); "
 	  "} ");
+	/* Lighten on hover for inactive pills, darken for accent ones */
+	A(".cb-menu-pill-arrow:hover { "
+	  "  background-color: rgba(255,255,255,0.08); "
+	  "} ");
+	A(".cb-menu-pill-active .cb-menu-pill-arrow:hover { "
+	  "  background-color: rgba(0,0,0,0.15); "
+	  "} ");
 	A(".cb-menu-pill label { "
 	  "  font-weight: 600; "
 	  "} ");
@@ -316,21 +324,21 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  min-width: 48px; "
 	  "  min-height: 26px; "
 	  "} ");
-	A(".cb-menu-led-toggle switch { "
-	  "  background-color: #5f6368; "
+	A("switch.cb-menu-led-toggle { "
+	  "  background-color: #3c3c3c; "
 	  "  border-radius: 13px; "
 	  "  min-width: 48px; "
 	  "  min-height: 26px; "
 	  "  padding: 2px; "
 	  "} ");
-	A(".cb-menu-led-toggle switch:hover { "
-	  "  background-color: #6d6d6d; "
+	A("switch.cb-menu-led-toggle:hover { "
+	  "  background-color: #4c4c4c; "
 	  "} ");
-	A(".cb-menu-led-toggle switch:checked { "
+	A("switch.cb-menu-led-toggle:checked { "
 	  "  background-color: %s; "
 	  "} ",
 	  state->config.chromeos.accent_color);
-	A(".cb-menu-led-toggle slider { "
+	A("switch.cb-menu-led-toggle slider { "
 	  "  background-color: #e8eaed; "
 	  "  border-radius: 11px; "
 	  "  min-width: 22px; "
@@ -362,7 +370,7 @@ void chromeos_menu_apply_css(AppState *state) {
 	A(".cb-menu-settings { "
 	  "  background-color: #3c3c3c; "
 	  "  color: #e8eaed; "
-	  "  border-radius: 22px; "
+	  "  border-radius: 9999px; "
 	  "  min-width: 44px; "
 	  "  min-height: 44px; "
 	  "  padding: 0; "
@@ -381,13 +389,21 @@ void chromeos_menu_apply_css(AppState *state) {
 	A(".cb-menu-slider-arrow { "
 	  "  background: none; "
 	  "  color: #e8eaed; "
+	  "  border-radius: 9999px; "
 	  "  font-size: 16px; "
-	  "  margin-left: 12px; "
+	  "  margin-left: 6px; "
+	  "  min-width: 36px; "
+	  "  min-height: 36px; "
+	  "  padding: 0; "
 	  "  font-family: \"JetBrainsMonoNerdFont\"; "
+	  "} ");
+	A(".cb-menu-slider-arrow:hover { "
+	  "  background-color: rgba(255,255,255,0.08); "
 	  "} ");
 	A(".cb-menu-slider-arrow label { "
 	  "  font-family: \"JetBrainsMonoNerdFont\"; "
 	  "  font-size: 16px; "
+	  "  margin-right: 6px; "
 	  "} ");
 	A(".cb-menu-slider-btn { "
 	  "  background-color: #3c3c3c; "
@@ -416,15 +432,16 @@ void chromeos_menu_apply_css(AppState *state) {
 	  "  font-family: \"JetBrainsMonoNerdFont\"; "
 	  "} ");
 	A(".cb-menu-wifi-list-btn { "
-	  "  background: none; "
+	  "  background-color: #3c3c3c; "
 	  "  color: #e8eaed; "
-	  "  padding: 6px 10px; "
-	  "  border-radius: 8px; "
+	  "  padding: 6px 18px 6px 10px; "
+	  "  border-radius: 9999px; "
+	  "  margin: 4px 0; "
 	  "  font-size: 14px; "
 	  "  min-height: 40px; "
 	  "} ");
 	A(".cb-menu-wifi-list-btn:hover { "
-	  "  background-color: rgba(255,255,255,0.08); "
+	  "  background-color: #4c4c4c; "
 	  "} ");
 	A(".cb-menu-wifi-list-btn label { "
 	  "  color: #e8eaed; "
@@ -557,7 +574,7 @@ static GtkWidget *create_chromeos_menu(BarWindow *bw, AppState *state) {
 	gtk_layer_set_keyboard_mode(GTK_WINDOW(win), GTK_LAYER_SHELL_KEYBOARD_MODE_ON_DEMAND);
 	gtk_layer_set_exclusive_zone(GTK_WINDOW(win), -1);
 
-/* Hyprland bug bypass: force RGBX to prevent unintended transparency/blur issues */
+	/* Hyprland bug bypass: force RGBX to prevent unintended transparency/blur issues */
 	apply_forcergbx_bypass("ebar-menu", "ebar-menu");
 
 	gtk_window_set_decorated(GTK_WINDOW(win), FALSE);
@@ -738,12 +755,57 @@ static void on_slider_value_changed(GtkRange *range, gpointer data) {
 	update_slider_minimum_state(range);
 }
 
-GtkWidget *create_menu_slider(const char *icon, const char *right_icon, double initial_val, GCallback on_changed,
-							  GCallback on_right_clicked, GCallback on_arrow_clicked, gpointer user_data, gboolean right_active,
-							  GtkWidget **scale_out) {
-	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-	gtk_style_context_add_class(gtk_widget_get_style_context(box), "cb-menu-slider-box");
+/* Keep the zero-position fill exactly SLIDER_VISUAL_MIN_PX wide so the
+ * highlight renders as a perfect circle, recomputed from the real width. */
+static void on_menu_slider_recalc_cancel(GtkWidget *widget, gpointer data) {
+	(void)data;
+	guint id = GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(widget), "slider-recalc-src"));
+	if (id) {
+		g_source_remove(id);
+		g_object_set_data(G_OBJECT(widget), "slider-recalc-src", NULL);
+	}
+}
 
+/* Runs outside the size-allocate cycle: changing the value during allocation
+ * leaves the trough/highlight unpainted until some other event forces a
+ * redraw (e.g. hovering the slider). */
+static gboolean on_menu_slider_recalc_idle(gpointer data) {
+	GtkWidget *scale = GTK_WIDGET(data);
+	GtkRange *range = GTK_RANGE(scale);
+	g_object_set_data(G_OBJECT(scale), "slider-recalc-src", NULL);
+
+	double width = gtk_widget_get_allocated_width(scale);
+	if (width < SLIDER_VISUAL_MIN_PX)
+		return G_SOURCE_REMOVE;
+	double visual_min = (SLIDER_VISUAL_MIN_PX * 100.0) / width;
+	if (visual_min > 99.0)
+		visual_min = 99.0;
+	double old_min = slider_get_visual_min(range);
+	if ((int)(old_min * 100.0) == (int)(visual_min * 100.0))
+		return G_SOURCE_REMOVE;
+
+	double actual_val = slider_get_actual_value(range);
+	slider_set_visual_min(range, visual_min);
+	slider_set_updating(range, TRUE);
+	gtk_range_set_value(range, slider_get_display_value(range, actual_val));
+	slider_set_updating(range, FALSE);
+	update_slider_minimum_state(range);
+	return G_SOURCE_REMOVE;
+}
+
+static void on_menu_slider_size_allocate(GtkWidget *widget, GdkRectangle *allocation, gpointer data) {
+	(void)allocation;
+	(void)data;
+	if (GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget), "slider-recalc-src")))
+		return;
+	guint id = g_idle_add(on_menu_slider_recalc_idle, widget);
+	g_object_set_data(G_OBJECT(widget), "slider-recalc-src", GUINT_TO_POINTER(id));
+}
+
+/* Builds the icon-over-scale widget shared by every menu slider, wiring up
+ * the visual-minimum (circle at zero) behaviour. Range must be 0..100. */
+GtkWidget *create_menu_slider_overlay(const char *icon, double initial_val, GCallback on_changed, gpointer user_data,
+									  GtkWidget **scale_out) {
 	GtkWidget *overlay = gtk_overlay_new();
 
 	GtkWidget *scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 100, 1);
@@ -751,15 +813,8 @@ GtkWidget *create_menu_slider(const char *icon, const char *right_icon, double i
 		*scale_out = scale;
 	gtk_scale_set_draw_value(GTK_SCALE(scale), FALSE);
 
-	/* Calculate visual_min based on the expected final width */
-	double expected_width = MENU_CONTENT_WIDTH;
-	if (right_icon)
-		expected_width -= 44;
-	if (on_arrow_clicked)
-		expected_width -= 32;
-
-	double initial_visual_min = (SLIDER_VISUAL_MIN_PX * 100.0) / expected_width;
-	slider_set_visual_min(GTK_RANGE(scale), initial_visual_min);
+	/* Initial guess until the first size-allocate provides the real width */
+	slider_set_visual_min(GTK_RANGE(scale), (SLIDER_VISUAL_MIN_PX * 100.0) / MENU_CONTENT_WIDTH);
 	gtk_range_set_value(GTK_RANGE(scale), slider_get_display_value(GTK_RANGE(scale), initial_val));
 	gtk_style_context_add_class(gtk_widget_get_style_context(scale), "cb-menu-slider");
 
@@ -769,12 +824,25 @@ GtkWidget *create_menu_slider(const char *icon, const char *right_icon, double i
 	gtk_widget_set_valign(icon_lbl, GTK_ALIGN_CENTER);
 	g_object_set_data(G_OBJECT(scale), "slider-icon", icon_lbl);
 	g_signal_connect(scale, "value-changed", G_CALLBACK(on_slider_value_changed), NULL);
+	g_signal_connect(scale, "size-allocate", G_CALLBACK(on_menu_slider_size_allocate), NULL);
+	g_signal_connect(scale, "destroy", G_CALLBACK(on_menu_slider_recalc_cancel), NULL);
 	if (on_changed)
 		g_signal_connect(scale, "value-changed", on_changed, user_data);
 	update_slider_minimum_state(GTK_RANGE(scale));
 
 	gtk_container_add(GTK_CONTAINER(overlay), scale);
 	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), icon_lbl);
+
+	return overlay;
+}
+
+GtkWidget *create_menu_slider(const char *icon, const char *right_icon, double initial_val, GCallback on_changed,
+							  GCallback on_right_clicked, GCallback on_arrow_clicked, gpointer user_data, gboolean right_active,
+							  GtkWidget **scale_out) {
+	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+	gtk_style_context_add_class(gtk_widget_get_style_context(box), "cb-menu-slider-box");
+
+	GtkWidget *overlay = create_menu_slider_overlay(icon, initial_val, on_changed, user_data, scale_out);
 
 	gtk_box_pack_start(GTK_BOX(box), overlay, TRUE, TRUE, 0);
 
@@ -792,8 +860,9 @@ GtkWidget *create_menu_slider(const char *icon, const char *right_icon, double i
 	}
 
 	if (on_arrow_clicked) {
-		GtkWidget *arrow_btn = gtk_button_new_with_label("");
+		GtkWidget *arrow_btn = gtk_button_new_with_label(ICON_CHEVRON_RIGHT);
 		gtk_widget_set_valign(arrow_btn, GTK_ALIGN_CENTER);
+		gtk_widget_set_size_request(arrow_btn, 36, 36);
 		gtk_style_context_add_class(gtk_widget_get_style_context(arrow_btn), "cb-menu-slider-arrow");
 		g_signal_connect(arrow_btn, "clicked", on_arrow_clicked, user_data);
 		gtk_box_pack_start(GTK_BOX(box), arrow_btn, FALSE, FALSE, 0);

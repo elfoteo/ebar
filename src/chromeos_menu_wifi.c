@@ -1,4 +1,5 @@
 #include "chromeos_menu_internal.h"
+#include "icons.h"
 #include "wifi.h"
 
 typedef struct {
@@ -51,11 +52,11 @@ static const char *wifi_signal_icon(int strength, gboolean secured) {
 	int level = wifi_signal_level(strength);
 
 	if (secured) {
-		static const char *secured_icons[] = {"󰤬", "󰤡", "󰤤", "󰤧", "󰤪"};
+		static const char *secured_icons[] = {ICON_WIFI_SEC_0, ICON_WIFI_SEC_1, ICON_WIFI_SEC_2, ICON_WIFI_SEC_3, ICON_WIFI_SEC_4};
 		return secured_icons[level];
 	}
 
-	static const char *open_icons[] = {"󰤯", "󰤟", "󰤢", "󰤥", "󰤨"};
+	static const char *open_icons[] = {ICON_WIFI_0, ICON_WIFI_1, ICON_WIFI_2, ICON_WIFI_3, ICON_WIFI_4};
 	return open_icons[level];
 }
 
@@ -96,7 +97,7 @@ static void on_password_visibility_clicked(GtkWidget *widget, gpointer data) {
 	PasswordToggleCtx *ctx = (PasswordToggleCtx *)data;
 	gboolean visible = gtk_entry_get_visibility(GTK_ENTRY(ctx->entry));
 	gtk_entry_set_visibility(GTK_ENTRY(ctx->entry), !visible);
-	gtk_button_set_label(GTK_BUTTON(ctx->button), visible ? "󰈈" : "󰈉");
+	gtk_button_set_label(GTK_BUTTON(ctx->button), visible ? ICON_EYE : ICON_EYE_OFF);
 }
 
 static void show_wifi_password_entry(BarWindow *bw, AppState *state, const char *ssid) {
@@ -136,7 +137,7 @@ static void show_wifi_password_entry(BarWindow *bw, AppState *state, const char 
 	gtk_entry_set_placeholder_text(GTK_ENTRY(entry), "Password");
 	gtk_box_pack_start(GTK_BOX(password_row), entry, TRUE, TRUE, 0);
 
-	GtkWidget *visibility_btn = gtk_button_new_with_label("󰈈");
+	GtkWidget *visibility_btn = gtk_button_new_with_label(ICON_EYE);
 	gtk_style_context_add_class(gtk_widget_get_style_context(visibility_btn), "cb-menu-icon-btn");
 	gtk_widget_set_size_request(visibility_btn, 36, 36);
 	PasswordToggleCtx *toggle_ctx = g_new0(PasswordToggleCtx, 1);
@@ -236,25 +237,28 @@ void chromeos_menu_show_wifi_networks(BarWindow *bw, AppState *state) {
 
 		GtkWidget *text_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 		GtkWidget *name_lbl = gtk_label_new(network->ssid);
-		chromeos_menu_ellipsize_label(name_lbl, 32);
+		chromeos_menu_ellipsize_label(name_lbl, 64);
 		gtk_widget_set_halign(name_lbl, GTK_ALIGN_START);
 		gtk_box_pack_start(GTK_BOX(text_box), name_lbl, FALSE, FALSE, 0);
 
 		const char *security_text = network->secured ? "Protected" : "Open";
-		char subtitle[64];
+		char subtitle[96];
 		if (network->active)
-			snprintf(subtitle, sizeof(subtitle), "Connected - %s", security_text);
+			snprintf(subtitle, sizeof(subtitle), "<span foreground=\"#7fd88f\">%s</span> - Connected", security_text);
+		else if (network->secured)
+			snprintf(subtitle, sizeof(subtitle), "<span foreground=\"#7fd88f\">%s</span>", security_text);
 		else
 			snprintf(subtitle, sizeof(subtitle), "%s", security_text);
 
-		GtkWidget *security_lbl = gtk_label_new(subtitle);
+		GtkWidget *security_lbl = gtk_label_new(NULL);
+		gtk_label_set_markup(GTK_LABEL(security_lbl), subtitle);
 		gtk_style_context_add_class(gtk_widget_get_style_context(security_lbl), "subtitle");
 		gtk_widget_set_halign(security_lbl, GTK_ALIGN_START);
 		gtk_box_pack_start(GTK_BOX(text_box), security_lbl, FALSE, FALSE, 0);
 		gtk_box_pack_start(GTK_BOX(btn_box), text_box, TRUE, TRUE, 0);
 
 		if (network->active) {
-			GtkWidget *check = gtk_label_new("󰄬");
+			GtkWidget *check = gtk_label_new(ICON_CHECK);
 			gtk_style_context_add_class(gtk_widget_get_style_context(check), "icon");
 			gtk_box_pack_end(GTK_BOX(btn_box), check, FALSE, FALSE, 0);
 		}

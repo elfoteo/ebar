@@ -1,4 +1,5 @@
 #include "chromeos_menu_internal.h"
+#include "icons.h"
 #include "nightlight.h"
 #include "pulse.h"
 #include "util.h"
@@ -99,7 +100,7 @@ GtkWidget *chromeos_menu_create_volume_slider(MenuCtx *ctx) {
 	pthread_mutex_unlock(&ctx->state->mutex);
 
 	GtkWidget *scale = NULL;
-	GtkWidget *box = create_menu_slider("󰕾", "󰝟", vol, G_CALLBACK(on_vol_scale_changed), G_CALLBACK(on_mute_clicked),
+	GtkWidget *box = create_menu_slider(ICON_VOLUME_HIGH, ICON_VOLUME_MUTE, vol, G_CALLBACK(on_vol_scale_changed), G_CALLBACK(on_mute_clicked),
 										G_CALLBACK(on_volume_arrow_clicked), ctx, muted, &scale);
 	if (ctx->bw)
 		ctx->bw->cb_menu_volume_slider = scale;
@@ -114,7 +115,7 @@ GtkWidget *chromeos_menu_create_brightness_nightlight_slider(MenuCtx *ctx) {
 
 	GtkWidget *scale = NULL;
 	GtkWidget *box =
-		create_menu_slider("󰃟", "", bright, G_CALLBACK(on_bright_scale_changed), G_CALLBACK(chromeos_menu_on_nightlight_clicked),
+		create_menu_slider(ICON_BRIGHTNESS, ICON_NIGHTLIGHT, bright, G_CALLBACK(on_bright_scale_changed), G_CALLBACK(chromeos_menu_on_nightlight_clicked),
 						   G_CALLBACK(chromeos_menu_on_nightlight_arrow_clicked), ctx, nightlight_active, &scale);
 	if (ctx->bw)
 		ctx->bw->cb_menu_brightness_slider = scale;
@@ -143,13 +144,13 @@ void chromeos_menu_show_nightlight(BarWindow *bw, AppState *state) {
 	GtkWidget *bright_scale = NULL;
 	gtk_box_pack_start(
 		GTK_BOX(content),
-		create_menu_slider("󰃟", NULL, bright, G_CALLBACK(on_bright_scale_changed), NULL, NULL, slider_ctx, FALSE, &bright_scale), FALSE,
+		create_menu_slider(ICON_BRIGHTNESS, NULL, bright, G_CALLBACK(on_bright_scale_changed), NULL, NULL, slider_ctx, FALSE, &bright_scale), FALSE,
 		FALSE, 0);
 	bw->cb_menu_brightness_slider = bright_scale;
 
 	gtk_box_pack_start(
 		GTK_BOX(content),
-		create_menu_slider("󰖔", NULL, level, G_CALLBACK(on_nightlight_scale_changed), NULL, NULL, slider_ctx, FALSE, NULL), FALSE, FALSE,
+		create_menu_slider(ICON_NIGHTLIGHT_ON, NULL, level, G_CALLBACK(on_nightlight_scale_changed), NULL, NULL, slider_ctx, FALSE, NULL), FALSE, FALSE,
 		0);
 
 	gtk_widget_show_all(bw->cb_menu_main_box);
@@ -176,7 +177,7 @@ void chromeos_menu_show_volume(BarWindow *bw, AppState *state) {
 
 	GtkWidget *vol_scale = NULL;
 	gtk_box_pack_start(GTK_BOX(content),
-					   create_menu_slider("󰕾", "󰝟", vol, G_CALLBACK(on_vol_scale_changed), G_CALLBACK(on_mute_clicked), NULL,
+					   create_menu_slider(ICON_VOLUME_HIGH, ICON_VOLUME_MUTE, vol, G_CALLBACK(on_vol_scale_changed), G_CALLBACK(on_mute_clicked), NULL,
 										  slider_ctx, muted, &vol_scale),
 					   FALSE, FALSE, 0);
 	bw->cb_menu_volume_slider = vol_scale;

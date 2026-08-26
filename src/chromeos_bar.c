@@ -1,4 +1,5 @@
 #include "chromeos_bar.h"
+#include "icons.h"
 #include "bar.h"
 #include "chromeos_launcher.h"
 #include "chromeos_menu.h"
@@ -131,10 +132,10 @@ void chromeos_update_tray(AppState *state, BarWindow *bw, SystemData *d,
 			strftime(t_buf, sizeof(t_buf), "%-I:%M", tmv);
 			const char *b_icon = get_battery_icon(d->bat_percent, d->bat_charging);
 
-			const char *w_icon = "󰤮";
+			const char *w_icon = ICON_WIFI_OFF;
 			if (d->wifi_enabled && d->wifi_adapter_exists) {
 				if (d->wifi_connected) w_icon = get_wifi_icon(d->wifi_strength);
-				else w_icon = "󰤯";
+				else w_icon = ICON_WIFI_0;
 			}
 
 			if (d->bat_percent >= 0 && d->bat_percent < 20 && !d->bat_charging)
@@ -166,7 +167,7 @@ void chromeos_update_tray(AppState *state, BarWindow *bw, SystemData *d,
 	}
 
 	if (wifi_changed) {
-		const char *w_icon = "󰤮";
+		const char *w_icon = ICON_WIFI_OFF;
 		const char *w_subtitle = "Off";
 		int active = 0;
 		int pill_sensitive = 1;
@@ -183,7 +184,7 @@ void chromeos_update_tray(AppState *state, BarWindow *bw, SystemData *d,
 					w_icon = get_wifi_icon(d->wifi_strength);
 					w_subtitle = d->wifi_ssid[0] ? d->wifi_ssid : "Connected";
 				} else {
-					w_icon = "󰤯";
+					w_icon = ICON_WIFI_0;
 					w_subtitle = "Disconnected";
 				}
 			}
@@ -269,7 +270,7 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 	gtk_widget_set_halign(cb_box, GTK_ALIGN_FILL);
 
 	/* ── Far-left: launcher button ── */
-	GtkWidget *btn_o = gtk_button_new_with_label("");
+	GtkWidget *btn_o = gtk_button_new_with_label(ICON_LAUNCHER);
 	bw->cb_launcher_btn = btn_o;
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_o), "cb-circle");
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_o), "cb-circle-icon");
@@ -293,13 +294,13 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 	gtk_widget_set_valign(desk_name_lbl, GTK_ALIGN_CENTER);
 	bw->cb_desk_label = desk_name_lbl;
 
-	GtkWidget *btn_prev = gtk_button_new_with_label("");
+	GtkWidget *btn_prev = gtk_button_new_with_label(ICON_CHEVRON_LEFT);
 	gtk_button_set_relief(GTK_BUTTON(btn_prev), GTK_RELIEF_NONE);
 	gtk_widget_set_valign(btn_prev, GTK_ALIGN_CENTER);
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_prev), "cb-desk-arrow");
 	g_signal_connect(btn_prev, "clicked", G_CALLBACK(on_desk_prev), NULL);
 
-	GtkWidget *btn_next = gtk_button_new_with_label("");
+	GtkWidget *btn_next = gtk_button_new_with_label(ICON_CHEVRON_RIGHT);
 	gtk_button_set_relief(GTK_BUTTON(btn_next), GTK_RELIEF_NONE);
 	gtk_widget_set_valign(btn_next, GTK_ALIGN_CENTER);
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_next), "cb-desk-arrow");
@@ -314,7 +315,7 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 
 	/* ── Right: system tray ── */
 	GtkWidget *r_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-	GtkWidget *btn_clip = gtk_button_new_with_label("");
+	GtkWidget *btn_clip = gtk_button_new_with_label(ICON_CLIPBOARD);
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_clip), "cb-circle");
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_clip), "cb-circle-icon");
 
@@ -322,7 +323,7 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_us), "cb-circle");
 	bw->cb_layout_label = gtk_bin_get_child(GTK_BIN(btn_us));
 
-	GtkWidget *btn_pen = gtk_button_new_with_label("󰏫");
+	GtkWidget *btn_pen = gtk_button_new_with_label(ICON_PEN);
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_pen), "cb-circle");
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_pen), "cb-circle-icon");
 
@@ -331,7 +332,7 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 	gtk_widget_set_name(btn_date, "cb-date");
 	bw->cb_date_label = gtk_bin_get_child(GTK_BIN(btn_date));
 
-	GtkWidget *btn_sys = gtk_button_new_with_label("9:29 󰤨  󰁹");
+	GtkWidget *btn_sys = gtk_button_new_with_label("9:29 " ICON_WIFI_4 "  " ICON_BATTERY_100);
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_sys), "cb-pill");
 	gtk_widget_set_name(btn_sys, "cb-sys");
 	bw->cb_sys_label = gtk_bin_get_child(GTK_BIN(btn_sys));

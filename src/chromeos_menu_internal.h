@@ -36,6 +36,8 @@ GtkWidget *chromeos_menu_create_brightness_nightlight_slider(MenuCtx *ctx);
 GtkWidget *create_menu_slider(const char *icon, const char *right_icon, double initial_val, GCallback on_changed,
 							  GCallback on_right_clicked, GCallback on_arrow_clicked, gpointer user_data, gboolean right_active,
 							  GtkWidget **scale_out);
+GtkWidget *create_menu_slider_overlay(const char *icon, double initial_val, GCallback on_changed, gpointer user_data,
+									  GtkWidget **scale_out);
 
 void chromeos_menu_on_wifi_clicked(GtkWidget *widget, gpointer data);
 void chromeos_menu_on_wifi_arrow_clicked(GtkWidget *widget, gpointer data);

@@ -1,4 +1,5 @@
 #include "bluetooth.h"
+#include "icons.h"
 #include <gio/gio.h>
 #include <stdio.h>
 #include <string.h>
@@ -187,59 +188,59 @@ static void set_device_icon(BluetoothDevice *device, GVariant *props) {
 
 	if (freedesktop_icon[0]) {
 		if (strcmp(freedesktop_icon, "phone") == 0)
-			g_strlcpy(device->icon, "󰄋", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_PHONE, sizeof(device->icon));
 		else if (strcmp(freedesktop_icon, "computer") == 0 || strcmp(freedesktop_icon, "video-display") == 0)
-			g_strlcpy(device->icon, "󰌢", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_COMPUTER, sizeof(device->icon));
 		else if (strcmp(freedesktop_icon, "audio-headset") == 0)
-			g_strlcpy(device->icon, "󰋎", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_HEADSET, sizeof(device->icon));
 		else if (strcmp(freedesktop_icon, "audio-headphones") == 0 || strcmp(freedesktop_icon, "audio-card") == 0)
-			g_strlcpy(device->icon, "󰋋", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_HEADPHONES, sizeof(device->icon));
 		else if (strcmp(freedesktop_icon, "input-keyboard") == 0)
-			g_strlcpy(device->icon, "󰌌", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_KEYBOARD, sizeof(device->icon));
 		else if (strcmp(freedesktop_icon, "input-mouse") == 0)
-			g_strlcpy(device->icon, "󰍽", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_MOUSE, sizeof(device->icon));
 		else if (strcmp(freedesktop_icon, "input-gaming") == 0)
-			g_strlcpy(device->icon, "󰮂", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_GAMEPAD, sizeof(device->icon));
 		else if (strcmp(freedesktop_icon, "printer") == 0)
-			g_strlcpy(device->icon, "󰐪", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_PRINTER, sizeof(device->icon));
 		else if (strcmp(freedesktop_icon, "camera-photo") == 0 || strcmp(freedesktop_icon, "camera-video") == 0)
-			g_strlcpy(device->icon, "󰄀", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_CAMERA, sizeof(device->icon));
 		else if (strcmp(freedesktop_icon, "multimedia-player") == 0)
-			g_strlcpy(device->icon, "󰦚", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_MEDIA_PLAYER, sizeof(device->icon));
 		else if (strcmp(freedesktop_icon, "modem") == 0 || strcmp(freedesktop_icon, "network-wireless") == 0)
-			g_strlcpy(device->icon, "󰑩", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_NETWORK, sizeof(device->icon));
 		else
-			g_strlcpy(device->icon, "󰂯", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BLUETOOTH, sizeof(device->icon));
 		return;
 	}
 
 	guint16 appearance = prop_uint16(props, "Appearance");
 	if (appearance) {
 		if (appearance >= 0x0040 && appearance <= 0x007f)
-			g_strlcpy(device->icon, "󰄋", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_PHONE, sizeof(device->icon));
 		else if (appearance >= 0x0080 && appearance <= 0x00bf)
-			g_strlcpy(device->icon, "󰌢", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_COMPUTER, sizeof(device->icon));
 		else if (appearance >= 0x00c0 && appearance <= 0x00ff)
-			g_strlcpy(device->icon, "󰖉", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_WATCH, sizeof(device->icon));
 		else if (appearance >= 0x0280 && appearance <= 0x02bf)
-			g_strlcpy(device->icon, "󰦚", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_MEDIA_PLAYER, sizeof(device->icon));
 		else if (appearance >= 0x0900 && appearance <= 0x093f)
-			g_strlcpy(device->icon, "󰋋", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_HEADPHONES, sizeof(device->icon));
 		else if (appearance >= 0x0940 && appearance <= 0x097f)
-			g_strlcpy(device->icon, appearance == 0x0942 ? "󰋎" : "󰋋", sizeof(device->icon));
+			g_strlcpy(device->icon, appearance == 0x0942 ? ICON_BT_HEADSET : ICON_BT_HEADPHONES, sizeof(device->icon));
 		else if (appearance >= 0x0300 && appearance <= 0x053f)
-			g_strlcpy(device->icon, "󰗶", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_DEVICE, sizeof(device->icon));
 		else if (appearance >= 0x03c0 && appearance <= 0x03ff) {
 			if (appearance == 0x03c1)
-				g_strlcpy(device->icon, "󰌌", sizeof(device->icon));
+				g_strlcpy(device->icon, ICON_KEYBOARD, sizeof(device->icon));
 			else if (appearance == 0x03c2)
-				g_strlcpy(device->icon, "󰍽", sizeof(device->icon));
+				g_strlcpy(device->icon, ICON_BT_MOUSE, sizeof(device->icon));
 			else if (appearance == 0x03c3 || appearance == 0x03c4)
-				g_strlcpy(device->icon, "󰮂", sizeof(device->icon));
+				g_strlcpy(device->icon, ICON_BT_GAMEPAD, sizeof(device->icon));
 			else
-				g_strlcpy(device->icon, "󰂯", sizeof(device->icon));
+				g_strlcpy(device->icon, ICON_BLUETOOTH, sizeof(device->icon));
 		} else
-			g_strlcpy(device->icon, "󰂯", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BLUETOOTH, sizeof(device->icon));
 		return;
 	}
 
@@ -249,46 +250,46 @@ static void set_device_icon(BluetoothDevice *device, GVariant *props) {
 		guint32 minor = cod & 0xff;
 		switch (major) {
 		case 0x01:
-			g_strlcpy(device->icon, "󰌢", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_COMPUTER, sizeof(device->icon));
 			return;
 		case 0x02:
-			g_strlcpy(device->icon, "󰄋", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_PHONE, sizeof(device->icon));
 			return;
 		case 0x04: {
-			const char *ico = "󰋋";
+			const char *ico = ICON_BT_HEADPHONES;
 			if (minor == 0x01 || minor == 0x02)
-				ico = "󰋎";
+				ico = ICON_BT_HEADSET;
 			else if (minor == 0x04)
-				ico = "󰦚";
+				ico = ICON_BT_MEDIA_PLAYER;
 			g_strlcpy(device->icon, ico, sizeof(device->icon));
 			return;
 		}
 		case 0x05: {
-			const char *ico = "󰂯";
+			const char *ico = ICON_BLUETOOTH;
 			if (minor == 0x01)
-				ico = "󰌌";
+				ico = ICON_KEYBOARD;
 			else if (minor == 0x02)
-				ico = "󰍽";
+				ico = ICON_BT_MOUSE;
 			else if (minor == 0x04 || minor == 0x05)
-				ico = "󰮂";
+				ico = ICON_BT_GAMEPAD;
 			g_strlcpy(device->icon, ico, sizeof(device->icon));
 			return;
 		}
 		case 0x06:
-			g_strlcpy(device->icon, "󰄀", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_CAMERA, sizeof(device->icon));
 			return;
 		case 0x07:
-			g_strlcpy(device->icon, minor == 0x01 ? "󰖉" : "󰂯", sizeof(device->icon));
+			g_strlcpy(device->icon, minor == 0x01 ? ICON_BT_WATCH : ICON_BLUETOOTH, sizeof(device->icon));
 			return;
 		case 0x09:
-			g_strlcpy(device->icon, "󰗶", sizeof(device->icon));
+			g_strlcpy(device->icon, ICON_BT_DEVICE, sizeof(device->icon));
 			return;
 		default:
 			break;
 		}
 	}
 
-	g_strlcpy(device->icon, "󰂯", sizeof(device->icon));
+	g_strlcpy(device->icon, ICON_BLUETOOTH, sizeof(device->icon));
 }
 
 GPtrArray *bluetooth_list_devices(void) {

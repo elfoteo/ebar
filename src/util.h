@@ -12,6 +12,7 @@ void setup_transparent_window(GtkWidget *win);
 const char *get_volume_icon(float vol, int muted);
 int find_backlight_path(const char *filename, char *out, size_t outsz);
 
+void lighten_hex_color(const char *hex, float factor, char *out, size_t outsz);
 void apply_css_from_string(const char *css, guint priority);
 void apply_forcergbx_bypass(const char *window_title, const char *layer_name);
 

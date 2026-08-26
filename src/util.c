@@ -69,22 +69,42 @@ int find_backlight_path(const char *filename, char *out, size_t outsz) {
 	return res;
 }
 
-void apply_css_from_string(const char *css, guint priority) {
-	static GtkCssProvider *provider = NULL;
-	static guint provider_priority = 0;
-	if (!provider) {
-		provider = gtk_css_provider_new();
-		provider_priority = priority;
-		gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
-			GTK_STYLE_PROVIDER(provider), priority);
-	} else if (provider_priority != priority) {
-		gtk_style_context_remove_provider_for_screen(gdk_screen_get_default(),
-			GTK_STYLE_PROVIDER(provider));
-		provider_priority = priority;
-		gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
-			GTK_STYLE_PROVIDER(provider), priority);
+void lighten_hex_color(const char *hex, float factor, char *out, size_t outsz) {
+	unsigned int r = 0, g = 0, b = 0;
+	if (hex[0] == '#') hex++;
+	if (sscanf(hex, "%2x%2x%2x", &r, &g, &b) != 3) {
+		g_strlcpy(out, hex, outsz);
+		return;
 	}
-	gtk_css_provider_load_from_data(provider, css, -1, NULL);
+	r = (unsigned int)(r + (255 - r) * factor);
+	g = (unsigned int)(g + (255 - g) * factor);
+	b = (unsigned int)(b + (255 - b) * factor);
+	snprintf(out, outsz, "#%02x%02x%02x", r, g, b);
+}
+
+void apply_css_from_string(const char *css, guint priority) {
+	enum { MAX_PROVIDERS = 8 };
+	static GtkCssProvider *providers[MAX_PROVIDERS] = {0};
+	static guint priorities[MAX_PROVIDERS] = {0};
+	static int count = 0;
+
+	int idx = -1;
+	for (int i = 0; i < count; i++) {
+		if (priorities[i] == priority) {
+			idx = i;
+			break;
+		}
+	}
+	if (idx < 0) {
+		if (count >= MAX_PROVIDERS)
+			return;
+		idx = count++;
+		providers[idx] = gtk_css_provider_new();
+		priorities[idx] = priority;
+		gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
+			GTK_STYLE_PROVIDER(providers[idx]), priority);
+	}
+	gtk_css_provider_load_from_data(providers[idx], css, -1, NULL);
 }
 
 void apply_forcergbx_bypass(const char *window_title, const char *layer_name) {

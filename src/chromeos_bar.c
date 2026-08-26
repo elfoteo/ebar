@@ -45,12 +45,16 @@ void apply_chromeos_css(AppState *state) {
 	static char *cached_css = NULL;
 	static char cached_font[64] = "";
 	static char cached_accent[32] = "";
+	static guint cached_n_bars = 0;
+	guint n_bars = g_list_length(state->bar_windows);
 
 	if (!cached_css || strcmp(cached_font, state->config.font.family) != 0 ||
-	    strcmp(cached_accent, state->config.chromeos.accent_color) != 0) {
+	    strcmp(cached_accent, state->config.chromeos.accent_color) != 0 ||
+	    cached_n_bars != n_bars) {
 		g_free(cached_css);
 		g_strlcpy(cached_font, state->config.font.family, sizeof(cached_font));
 		g_strlcpy(cached_accent, state->config.chromeos.accent_color, sizeof(cached_accent));
+		cached_n_bars = n_bars;
 
 		char css[16384];
 		int n = 0;

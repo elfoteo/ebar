@@ -205,7 +205,10 @@ void chromeos_menu_apply_css(AppState *state) {
 		g_strlcpy(cached_accent, state->config.chromeos.accent_color, sizeof(cached_accent));
 
 		char css[16384];
+		char accent_light[32];
 		int n = 0;
+
+		lighten_hex_color(state->config.chromeos.accent_color, 0.15f, accent_light, sizeof(accent_light));
 
 #define A(...) n += snprintf(css + n, (int)sizeof(css) - n, __VA_ARGS__)
 
@@ -252,9 +255,8 @@ void chromeos_menu_apply_css(AppState *state) {
 		  "} ");
 		A(".cb-menu-pill-active.cb-hover { "
 		  "  background-color: %s; "
-		  "  filter: brightness(1.1); "
 		  "} ",
-		  state->config.chromeos.accent_color);
+		  accent_light);
 		A(".cb-menu-pill-main { "
 		  "  padding: 12px; "
 		  "  border-radius: 16px 0 0 16px; "
@@ -431,9 +433,8 @@ void chromeos_menu_apply_css(AppState *state) {
 		  state->config.chromeos.accent_color);
 		A(".cb-menu-slider-btn-active:hover { "
 		  "  background-color: %s; "
-		  "  filter: brightness(1.1); "
 		  "} ",
-		  state->config.chromeos.accent_color);
+		  accent_light);
 		A(".cb-menu-slider-btn label { "
 		  "  font-family: \"JetBrainsMonoNerdFont\"; "
 		  "} ");
@@ -535,9 +536,8 @@ void chromeos_menu_apply_css(AppState *state) {
 		  state->config.chromeos.accent_color);
 		A(".cb-menu-dialog-btn-primary:hover { "
 		  "  background-color: %s; "
-		  "  filter: brightness(1.1); "
 		  "} ",
-		  state->config.chromeos.accent_color);
+		  accent_light);
 		A(".cb-menu-wifi-ssid { "
 		  "  color: #e8eaed; "
 		  "  font-size: 15px; "

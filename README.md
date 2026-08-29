@@ -51,6 +51,23 @@ sudo pacman -S noto-fonts ttf-jetbrains-mono-nerd
 - `nvidia-smi`: Optional, for GPU metrics.
 - BlueZ/`bluetoothd`: Optional, for Bluetooth quick settings.
 
+### LED permissions (ChromeOS mode)
+The quick-settings LEDs menu reads and writes to sysfs files under `/sys/class/leds/`.
+By default only root can write to `brightness` and `multi_intensity`. To allow your
+user to control LEDs without sudo, create a udev rule:
+
+```bash
+sudo cp contrib/90-ebar-leds.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+The rule grants the `video` group write access to `brightness` and `multi_intensity`.
+Make sure your user is in the `video` group:
+```bash
+sudo usermod -aG video $USER
+```
+Then log out and back in for the group change to take effect.
+
 ### Optional (nightlight widget)
 - **`hyprsunset`**: Must be installed and running. Add to your `hyprland.conf`:
   ```hyprlang
@@ -94,13 +111,13 @@ For details on the supported commands, see [PROTOCOL.md](PROTOCOL.md).
 
 The `ebar` binary (via its launch script) can be used to send these events and control system state:
 
-```hyprlang
-# Brightness control
-bindl = ,XF86MonBrightnessDown, exec, ~/coding/c/ebar/launch.sh --brightness lower
-bindl = ,XF86MonBrightnessUp, exec, ~/coding/c/ebar/launch.sh --brightness raise
+```lua
+-- Brightness control
+hl.bind(", XF86MonBrightnessDown", hl.dsp.exec_cmd("~/coding/c/ebar/launch.sh --brightness lower"))
+hl.bind(", XF86MonBrightnessUp", hl.dsp.exec_cmd("~/coding/c/ebar/launch.sh --brightness raise"))
 
-# Toggle floating with bar refresh
-bind = $mainMod, F, exec, ~/coding/c/ebar/launch.sh --togglefloat
+-- Toggle floating with bar refresh
+hl.bind(mainMod .. "+F", hl.dsp.exec_cmd("~/coding/c/ebar/launch.sh --togglefloat"))
 ```
 
 ### Example Layout

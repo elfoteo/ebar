@@ -101,7 +101,7 @@ static void on_monitor_removed(GdkDisplay *display, GdkMonitor *monitor, gpointe
 int main(int argc, char **argv) {
 	if (argc > 1) {
 		if (strcmp(argv[1], "--togglefloat") == 0) {
-			system("hyprctl dispatch togglefloating > /dev/null 2>&1");
+			system("hyprctl dispatch \"hl.dsp.window.float({ action = 'toggle' })\"");
 			send_to_ebar("togglefloating\n");
 			return 0;
 		} else if (strcmp(argv[1], "--brightness") == 0 && argc > 2) {
@@ -155,6 +155,9 @@ int main(int argc, char **argv) {
 			send_to_ebar(msg);
 			set_brightness(target, cfg.brightness.transition_ms);
 			return 0;
+		} else {
+			fprintf(stderr, "Usage: ebar --togglefloat | ebar --brightness raise|lower\n");
+			return 1;
 		}
 	}
 

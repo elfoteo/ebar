@@ -352,6 +352,23 @@ void chromeos_menu_apply_css(AppState *state) {
 		  "  min-width: 22px; "
 		  "  min-height: 22px; "
 		  "} ");
+		A(".cb-menu-led-channels { "
+		  "  font-size: 11px; "
+		  "  opacity: 0.8; "
+		  "} ");
+		A("scrollbar, scrollbar slider { "
+		  "  background-color: transparent; "
+		  "  border: none; "
+		  "} ");
+		A("scrollbar slider { "
+		  "  background-color: rgba(255,255,255,0.3); "
+		  "  border-radius: 9999px; "
+		  "  min-width: 6px; "
+		  "  min-height: 24px; "
+		  "} ");
+		A("scrollbar slider:hover { "
+		  "  background-color: rgba(255,255,255,0.5); "
+		  "} ");
 		A(".cb-menu-bottom { "
 		  "  margin-top: 16px; "
 		  "} ");
@@ -389,6 +406,7 @@ void chromeos_menu_apply_css(AppState *state) {
 		A(".cb-menu-settings label { "
 		  "  font-family: \"JetBrainsMonoNerdFont\"; "
 		  "  font-size: 22px; "
+		  "  margin-left: -4px; "
 		  "} ");
 		A(".cb-menu-battery { "
 		  "  color: #e8eaed; "
@@ -727,7 +745,7 @@ void setup_chromeos_menu_toggle(BarWindow *bw, AppState *state) {
 		ctx->bw = bw;
 		ctx->state = state;
 
-		g_signal_connect_data(btn, "clicked", G_CALLBACK(on_sys_btn_clicked), ctx, (GClosureNotify)g_free, 0);
+		g_signal_connect_data(btn, "clicked", G_CALLBACK(on_sys_btn_clicked), ctx, chromeos_menu_free_generic_ctx, 0);
 	}
 }
 

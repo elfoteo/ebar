@@ -297,7 +297,7 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 	LauncherCtx *lctx = g_new0(LauncherCtx, 1);
 	lctx->bw = bw;
 	lctx->state = state;
-	g_signal_connect_data(btn_o, "clicked", G_CALLBACK(on_launcher_btn_clicked), lctx, (GClosureNotify)g_free, 0);
+	g_signal_connect_data(btn_o, "clicked", G_CALLBACK(on_launcher_btn_clicked), lctx, chromeos_menu_free_generic_ctx, 0);
 
 	/* ── Left area: desk switcher pill ── */
 	GtkWidget *desk_pill = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);

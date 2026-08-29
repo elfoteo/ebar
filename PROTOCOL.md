@@ -25,5 +25,5 @@ All commands are passed through `handle_ipc_line` and should be terminated with 
 
 The `ebar` binary itself can be used to send these events:
 
-- `ebar --togglefloat`: Dispatches `togglefloating` to Hyprland and notifies ebar.
+- `ebar --togglefloat`: Dispatches `hl.dsp.window.float({ action = "toggle" })` to Hyprland and notifies ebar.
 - `ebar --brightness raise|lower`: Calculates the next brightness level based on `ebar.conf`, sets it, and notifies ebar.

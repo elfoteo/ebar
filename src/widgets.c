@@ -1,10 +1,10 @@
 #include "widgets.h"
 #include "bluetooth.h"
-#include "icons.h"
 #include "chromeos_bar.h"
 #include "chromeos_popup.h"
 #include "constants.h"
 #include "gtk-layer-shell.h"
+#include "icons.h"
 #include "nightlight.h"
 #include "pulse.h"
 #include "util.h"
@@ -13,11 +13,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define VOLUME_SCROLL_STEP   2.0
+#define VOLUME_SCROLL_STEP 2.0
 #define BRIGHTNESS_SCROLL_STEP 5.0
-#define RING_SIZE           48
-#define RING_THICKNESS      3.0
-#define RING_PADDING        2.0
+#define RING_SIZE 48
+#define RING_THICKNESS 3.0
+#define RING_PADDING 2.0
 
 static double compute_scroll_delta(GdkEventScroll *event, double step) {
 	if (event->direction == GDK_SCROLL_UP)
@@ -681,10 +681,12 @@ const char *get_wifi_icon(int q) {
 const char *get_battery_icon(int cap, int charging) {
 	/* Index 0 = ≤10%, index 9 = 91-100% */
 	static const char *discharging[10] = {
-		ICON_BATTERY_10, ICON_BATTERY_20, ICON_BATTERY_30, ICON_BATTERY_40, ICON_BATTERY_50, ICON_BATTERY_60, ICON_BATTERY_70, ICON_BATTERY_80, ICON_BATTERY_90, ICON_BATTERY_100,
+		ICON_BATTERY_10, ICON_BATTERY_20, ICON_BATTERY_30, ICON_BATTERY_40, ICON_BATTERY_50,
+		ICON_BATTERY_60, ICON_BATTERY_70, ICON_BATTERY_80, ICON_BATTERY_90, ICON_BATTERY_100,
 	};
 	static const char *charging_icons[10] = {
-		ICON_BATTERY_CHG_10, ICON_BATTERY_CHG_20, ICON_BATTERY_CHG_30, ICON_BATTERY_CHG_40, ICON_BATTERY_CHG_50, ICON_BATTERY_CHG_60, ICON_BATTERY_CHG_70, ICON_BATTERY_CHG_80, ICON_BATTERY_CHG_90, ICON_BATTERY_CHG_100,
+		ICON_BATTERY_CHG_10, ICON_BATTERY_CHG_20, ICON_BATTERY_CHG_30, ICON_BATTERY_CHG_40, ICON_BATTERY_CHG_50,
+		ICON_BATTERY_CHG_60, ICON_BATTERY_CHG_70, ICON_BATTERY_CHG_80, ICON_BATTERY_CHG_90, ICON_BATTERY_CHG_100,
 	};
 	if (cap < 0)
 		return ICON_BATTERY_UNKNOWN; /* no battery present */
@@ -768,7 +770,8 @@ gboolean update_widgets_idle(gpointer data) {
 
 	int vol_changed = (d.vol != last_d.vol || d.vol_muted != last_d.vol_muted || d.visual_volume != last_d.visual_volume);
 	int brightness_changed = (d.visual_brightness != last_d.visual_brightness);
-	int nightlight_changed = (d.nightlight_level != last_d.nightlight_level || d.nightlight_error != last_d.nightlight_error || d.nightlight_retrying != last_d.nightlight_retrying);
+	int nightlight_changed = (d.nightlight_level != last_d.nightlight_level || d.nightlight_error != last_d.nightlight_error ||
+							  d.nightlight_retrying != last_d.nightlight_retrying);
 	int bluetooth_changed = (d.bluetooth_powered != last_d.bluetooth_powered || d.bluetooth_connected != last_d.bluetooth_connected);
 	int media_changed = (d.is_playing != last_d.is_playing || strcmp(d.media_title, last_d.media_title) != 0 ||
 						 strcmp(d.media_artist, last_d.media_artist) != 0);
@@ -874,6 +877,7 @@ gboolean update_widgets_idle(gpointer data) {
 			/* Separator is only visible when media is playing AND at least one text line shows */
 			if (bw->media_sep)
 				gtk_widget_set_visible(bw->media_sep, show_title || show_artist);
+
 			if (bw->media_title_label) {
 				gtk_label_set_text(GTK_LABEL(bw->media_title_label), d.media_title);
 				gtk_widget_set_visible(bw->media_title_label, show_title);
@@ -886,10 +890,8 @@ gboolean update_widgets_idle(gpointer data) {
 		}
 
 		/* ChromeOS tray labels, popups and menu sliders */
-		chromeos_update_tray(state, bw, &d,
-							 time_changed, wifi_changed, bat_changed,
-							 kb_changed, vol_changed, brightness_changed,
-							 now, &tmv);
+		chromeos_update_tray(state, bw, &d, time_changed, wifi_changed, bat_changed, kb_changed, vol_changed, brightness_changed, now,
+							 &tmv);
 	}
 
 	int ws_changed = (active_workspace != last_active_ws || memcmp(ws_win_count, last_ws_count, sizeof(ws_win_count)) != 0);

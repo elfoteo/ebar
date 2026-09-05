@@ -460,7 +460,7 @@ void chromeos_menu_apply_css(AppState *state) {
 		  "  background-color: #3c3c3c; "
 		  "  color: #e8eaed; "
 		  "  padding: 6px 18px 6px 10px; "
-		  "  border-radius: 9999px; "
+		  "  border-radius: 16px; "
 		  "  margin: 4px 0; "
 		  "  font-size: 14px; "
 		  "  min-height: 40px; "

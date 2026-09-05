@@ -7,6 +7,7 @@ typedef struct {
 	AppState *state;
 	char *ssid;
 	char *security;
+	gboolean active;
 } WifiNetCtx;
 
 typedef struct {
@@ -88,7 +89,7 @@ static void on_connect_clicked(GtkWidget *widget, gpointer data) {
 	(void)widget;
 	WifiConnectCtx *ctx = (WifiConnectCtx *)data;
 	const char *password = gtk_entry_get_text(GTK_ENTRY(ctx->password_entry));
-	wifi_connect(ctx->ssid, password);
+	wifi_connect(ctx->ssid, password, NULL, NULL);
 	chromeos_menu_show_wifi_networks(ctx->bw, ctx->state);
 }
 
@@ -180,10 +181,16 @@ static void show_wifi_password_entry(BarWindow *bw, AppState *state, const char 
 static void on_wifi_net_clicked(GtkWidget *widget, gpointer data) {
 	(void)widget;
 	WifiNetCtx *ctx = (WifiNetCtx *)data;
-	if (ctx->security && strlen(ctx->security) > 0 && strcmp(ctx->security, "--") != 0) {
-		show_wifi_password_entry(ctx->bw, ctx->state, ctx->ssid);
+	if (ctx->active) {
+		wifi_disconnect();
+		chromeos_menu_show_wifi_networks(ctx->bw, ctx->state);
+	} else if (ctx->security && strlen(ctx->security) > 0 && strcmp(ctx->security, "--") != 0) {
+		if (wifi_has_saved_connection(ctx->ssid))
+			wifi_connect(ctx->ssid, NULL, NULL, NULL);
+		else
+			show_wifi_password_entry(ctx->bw, ctx->state, ctx->ssid);
 	} else {
-		wifi_connect(ctx->ssid, NULL);
+		wifi_connect(ctx->ssid, NULL, NULL, NULL);
 	}
 }
 
@@ -270,6 +277,7 @@ void chromeos_menu_show_wifi_networks(BarWindow *bw, AppState *state) {
 		net_ctx->state = state;
 		net_ctx->ssid = g_strdup(network->ssid);
 		net_ctx->security = g_strdup(network->security);
+		net_ctx->active = network->active;
 
 		g_signal_connect_data(btn, "clicked", G_CALLBACK(on_wifi_net_clicked), net_ctx, (GClosureNotify)free_wifi_net_ctx, 0);
 		gtk_box_pack_start(GTK_BOX(list_box), btn, FALSE, FALSE, 0);

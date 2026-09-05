@@ -283,19 +283,60 @@ GPtrArray *wifi_list_networks(void) {
 	return networks;
 }
 
+typedef struct {
+	WifiConnectCallback callback;
+	gpointer user_data;
+} WifiConnectCallbackData;
+
 static void activate_connection_cb(GObject *object, GAsyncResult *result, gpointer user_data) {
 	GError *error = NULL;
 	NMActiveConnection *active = nm_client_add_and_activate_connection_finish(NM_CLIENT(object), result, &error);
 	if (active)
 		g_object_unref(active);
+	gboolean success = (error == NULL);
 	if (error) {
 		g_warning("Failed to connect to WiFi: %s", error->message);
 		g_error_free(error);
 	}
-	(void)user_data;
+	WifiConnectCallbackData *cb_data = (WifiConnectCallbackData *)user_data;
+	if (cb_data && cb_data->callback)
+		cb_data->callback(success, cb_data->user_data);
+	g_free(cb_data);
 }
 
-void wifi_connect(const char *ssid, const char *password) {
+gboolean wifi_has_saved_connection(const char *ssid) {
+	if (!ssid || ssid[0] == '\0')
+		return FALSE;
+
+	NMClient *client = wifi_nm_client;
+	if (!client)
+		return FALSE;
+
+	const GPtrArray *connections = nm_client_get_connections(client);
+	for (guint i = 0; connections && i < connections->len; i++) {
+		NMConnection *conn = g_ptr_array_index(connections, i);
+		NMSettingWireless *s_wifi = nm_connection_get_setting_wireless(conn);
+		if (!s_wifi)
+			continue;
+
+		GBytes *conn_ssid = nm_setting_wireless_get_ssid(s_wifi);
+		if (!conn_ssid)
+			continue;
+
+		gsize len = 0;
+		const guint8 *data = g_bytes_get_data(conn_ssid, &len);
+		char *conn_ssid_str = nm_utils_ssid_to_utf8(data, len);
+		gboolean match = conn_ssid_str && strcmp(conn_ssid_str, ssid) == 0;
+		g_free(conn_ssid_str);
+
+		if (match)
+			return TRUE;
+	}
+
+	return FALSE;
+}
+
+void wifi_connect(const char *ssid, const char *password, WifiConnectCallback callback, gpointer user_data) {
 	if (!ssid || ssid[0] == '\0')
 		return;
 
@@ -308,6 +349,36 @@ void wifi_connect(const char *ssid, const char *password) {
 		return;
 
 	NMAccessPoint *ap = find_access_point_by_ssid(wifi, ssid);
+
+	/* First, try to find and activate a saved connection for this SSID */
+	const GPtrArray *connections = nm_client_get_connections(client);
+	for (guint i = 0; connections && i < connections->len; i++) {
+		NMConnection *conn = g_ptr_array_index(connections, i);
+		NMSettingWireless *s_wifi = nm_connection_get_setting_wireless(conn);
+		if (!s_wifi)
+			continue;
+
+		GBytes *conn_ssid = nm_setting_wireless_get_ssid(s_wifi);
+		if (!conn_ssid)
+			continue;
+
+		gsize len = 0;
+		const guint8 *data = g_bytes_get_data(conn_ssid, &len);
+		char *conn_ssid_str = nm_utils_ssid_to_utf8(data, len);
+		gboolean match = conn_ssid_str && strcmp(conn_ssid_str, ssid) == 0;
+		g_free(conn_ssid_str);
+
+		if (match) {
+			WifiConnectCallbackData *cb_data = g_new0(WifiConnectCallbackData, 1);
+			cb_data->callback = callback;
+			cb_data->user_data = user_data;
+			nm_client_activate_connection_async(client, conn, NM_DEVICE(wifi), ap ? nm_object_get_path(NM_OBJECT(ap)) : NULL, NULL,
+											   activate_connection_cb, cb_data);
+			return;
+		}
+	}
+
+	/* No saved connection found, create a new one */
 	NMConnection *connection = nm_simple_connection_new();
 
 	NMSettingConnection *s_con = NM_SETTING_CONNECTION(nm_setting_connection_new());
@@ -315,11 +386,11 @@ void wifi_connect(const char *ssid, const char *password) {
 				 NM_SETTING_CONNECTION_AUTOCONNECT, TRUE, NULL);
 	nm_connection_add_setting(connection, NM_SETTING(s_con));
 
-	NMSettingWireless *s_wifi = NM_SETTING_WIRELESS(nm_setting_wireless_new());
+	NMSettingWireless *s_wifi_new = NM_SETTING_WIRELESS(nm_setting_wireless_new());
 	GBytes *ssid_bytes = g_bytes_new(ssid, strlen(ssid));
-	g_object_set(s_wifi, NM_SETTING_WIRELESS_SSID, ssid_bytes, NM_SETTING_WIRELESS_MODE, NM_SETTING_WIRELESS_MODE_INFRA, NULL);
+	g_object_set(s_wifi_new, NM_SETTING_WIRELESS_SSID, ssid_bytes, NM_SETTING_WIRELESS_MODE, NM_SETTING_WIRELESS_MODE_INFRA, NULL);
 	g_bytes_unref(ssid_bytes);
-	nm_connection_add_setting(connection, NM_SETTING(s_wifi));
+	nm_connection_add_setting(connection, NM_SETTING(s_wifi_new));
 
 	if (password && password[0] != '\0') {
 		NMSettingWirelessSecurity *s_sec = NM_SETTING_WIRELESS_SECURITY(nm_setting_wireless_security_new());
@@ -327,7 +398,36 @@ void wifi_connect(const char *ssid, const char *password) {
 		nm_connection_add_setting(connection, NM_SETTING(s_sec));
 	}
 
+	WifiConnectCallbackData *cb_data = g_new0(WifiConnectCallbackData, 1);
+	cb_data->callback = callback;
+	cb_data->user_data = user_data;
 	nm_client_add_and_activate_connection_async(client, connection, NM_DEVICE(wifi), ap ? nm_object_get_path(NM_OBJECT(ap)) : NULL, NULL,
-												activate_connection_cb, NULL);
+											   activate_connection_cb, cb_data);
 	g_object_unref(connection);
+}
+
+static void deactivate_connection_cb(GObject *object, GAsyncResult *result, gpointer user_data) {
+	GError *error = NULL;
+	gboolean success = nm_client_deactivate_connection_finish(NM_CLIENT(object), result, &error);
+	if (!success) {
+		g_warning("Failed to disconnect WiFi: %s", error ? error->message : "unknown error");
+		g_clear_error(&error);
+	}
+	(void)user_data;
+}
+
+void wifi_disconnect(void) {
+	NMClient *client = wifi_nm_client;
+	if (!client)
+		return;
+
+	NMDeviceWifi *wifi = find_wifi_device(client);
+	if (!wifi)
+		return;
+
+	NMActiveConnection *active = nm_device_get_active_connection(NM_DEVICE(wifi));
+	if (!active)
+		return;
+
+	nm_client_deactivate_connection_async(client, active, NULL, deactivate_connection_cb, NULL);
 }

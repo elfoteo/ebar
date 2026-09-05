@@ -10,6 +10,7 @@ typedef struct {
 	int strength;
 	gboolean active;
 	gboolean secured;
+	gboolean hidden;
 } WifiNetwork;
 
 #include "types.h"

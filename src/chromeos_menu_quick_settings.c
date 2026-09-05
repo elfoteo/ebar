@@ -446,15 +446,17 @@ void chromeos_menu_show_main(BarWindow *bw, AppState *state) {
 	if (!d.wifi_adapter_exists) {
 		w_subtitle = "No adapter";
 		wifi_pill_sensitive = 0;
-	} else if (d.wifi_enabled) {
-		wifi_active = 1;
+	} else {
 		wifi_arrow_sensitive = 1;
-		if (d.wifi_connected) {
-			w_icon = get_wifi_icon(d.wifi_strength);
-			w_subtitle = d.wifi_ssid[0] ? d.wifi_ssid : "Connected";
-		} else {
-			w_icon = ICON_WIFI_0; /* Disconnected (outline) */
-			w_subtitle = "Disconnected";
+		if (d.wifi_enabled) {
+			wifi_active = 1;
+			if (d.wifi_connected) {
+				w_icon = get_wifi_icon(d.wifi_strength);
+				w_subtitle = d.wifi_ssid[0] ? d.wifi_ssid : "Connected";
+			} else {
+				w_icon = ICON_WIFI_0;
+				w_subtitle = "Disconnected";
+			}
 		}
 	}
 

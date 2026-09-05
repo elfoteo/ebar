@@ -191,9 +191,9 @@ void chromeos_update_tray(AppState *state, BarWindow *bw, SystemData *d,
 			w_subtitle = "No adapter";
 			pill_sensitive = 0;
 		} else {
+			arrow_sensitive = 1;
 			if (d->wifi_enabled) {
 				active = 1;
-				arrow_sensitive = 1;
 				if (d->wifi_connected) {
 					w_icon = get_wifi_icon(d->wifi_strength);
 					w_subtitle = d->wifi_ssid[0] ? d->wifi_ssid : "Connected";

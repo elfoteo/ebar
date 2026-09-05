@@ -29,11 +29,12 @@ A beautiful, modular, and customizable Hyprland bar written in C with GTK3 and L
 - `gtk-layer-shell`
 - `upower-glib`
 - `librsvg`
+- `libnm` (NetworkManager client library)
 - `pthread`, `math`, `cairo`
 
 On Arch Linux:
 ```bash
-sudo pacman -S gtk3 gtk-layer-shell upower librsvg
+sudo pacman -S gtk3 gtk-layer-shell upower librsvg networkmanager
 ```
 
 ### Fonts (runtime)
@@ -50,6 +51,7 @@ sudo pacman -S noto-fonts ttf-jetbrains-mono-nerd
 - `playerctl`: Media metadata and controls.
 - `nvidia-smi`: Optional, for GPU metrics.
 - BlueZ/`bluetoothd`: Optional, for Bluetooth quick settings.
+- `nmcli`: Required for WiFi (part of NetworkManager). The WiFi backend must be **wpa_supplicant** (not iwd). Set `backend=wpa_supplicant` in `/etc/NetworkManager/NetworkManager.conf` if needed.
 
 ### LED permissions (ChromeOS mode)
 The quick-settings LEDs menu reads and writes to sysfs files under `/sys/class/leds/`.

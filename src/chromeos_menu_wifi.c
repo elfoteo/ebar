@@ -2,12 +2,15 @@
 #include "icons.h"
 #include "wifi.h"
 
+#include <stdlib.h>
+
 typedef struct {
 	BarWindow *bw;
 	AppState *state;
 	char *ssid;
 	char *security;
 	gboolean active;
+	gboolean hidden;
 } WifiNetCtx;
 
 typedef struct {
@@ -16,6 +19,18 @@ typedef struct {
 	char *ssid;
 	GtkWidget *password_entry;
 } WifiConnectCtx;
+
+typedef struct {
+	BarWindow *bw;
+	AppState *state;
+	GtkWidget *ssid_entry;
+	GtkWidget *password_entry;
+	GtkWidget *error_label;
+	GtkWidget *spinner;
+	GtkWidget *connect_btn;
+	GtkWidget *cancel_btn;
+	gboolean connecting;
+} WifiHiddenConnectCtx;
 
 typedef struct {
 	GtkWidget *entry;
@@ -34,6 +49,12 @@ static void free_wifi_connect_ctx(gpointer data, GClosure *closure) {
 	(void)closure;
 	WifiConnectCtx *ctx = (WifiConnectCtx *)data;
 	g_free(ctx->ssid);
+	g_free(ctx);
+}
+
+static void free_wifi_hidden_connect_ctx(gpointer data, GClosure *closure) {
+	(void)closure;
+	WifiHiddenConnectCtx *ctx = (WifiHiddenConnectCtx *)data;
 	g_free(ctx);
 }
 
@@ -73,6 +94,14 @@ void chromeos_menu_on_wifi_clicked(GtkWidget *widget, gpointer data) {
 	chromeos_menu_show_main(ctx->bw, state);
 }
 
+static void chromeos_menu_on_wifi_toggled(GObject *object, GParamSpec *pspec, gpointer data) {
+	(void)pspec;
+	MenuCtx *ctx = (MenuCtx *)data;
+	int active = gtk_switch_get_active(GTK_SWITCH(object));
+	wifi_set_enabled(active);
+	(void)ctx;
+}
+
 void chromeos_menu_on_wifi_arrow_clicked(GtkWidget *widget, gpointer data) {
 	(void)widget;
 	MenuCtx *ctx = (MenuCtx *)data;
@@ -93,6 +122,138 @@ static void on_connect_clicked(GtkWidget *widget, gpointer data) {
 	chromeos_menu_show_wifi_networks(ctx->bw, ctx->state);
 }
 
+static char *strip_ansi(const char *str) {
+	if (!str)
+		return NULL;
+	GString *out = g_string_new(NULL);
+	const char *p = str;
+	while (*p) {
+		if (*p == '\033') {
+			p++;
+			while (*p && *p != 'm')
+				p++;
+			if (*p == 'm')
+				p++;
+		} else {
+			g_string_append_c(out, *p);
+			p++;
+		}
+	}
+	char *result = g_string_free_and_steal(out);
+	return result;
+}
+
+static guint wifi_refresh_pending = 0;
+
+static gboolean nmcli_connect_hidden(const char *ssid, const char *passphrase, char **error_out) {
+	gint exit_status = 0;
+	gchar *stdout_str = NULL;
+	gchar *stderr_str = NULL;
+	GError *err = NULL;
+
+	const char *argv[] = {
+		"nmcli", "device", "wifi", "connect", ssid,
+		"password", passphrase,
+		"hidden", "yes",
+		NULL
+	};
+
+	g_spawn_sync(NULL, (char **)argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, &stdout_str, &stderr_str, &exit_status, &err);
+
+	if (err) {
+		if (error_out)
+			*error_out = strip_ansi(err->message);
+		g_error_free(err);
+	} else if (exit_status != 0) {
+		const char *msg = (stderr_str && stderr_str[0] != '\0') ? stderr_str :
+						  (stdout_str && stdout_str[0] != '\0') ? stdout_str : "Unknown error";
+		if (error_out)
+			*error_out = strip_ansi(msg);
+	}
+
+	g_free(stdout_str);
+	g_free(stderr_str);
+	return (exit_status == 0 && !err);
+}
+
+typedef struct {
+	WifiHiddenConnectCtx *ctx;
+	BarWindow *bw;
+	char *ssid;
+	char *password;
+	char *error;
+} WifiConnectThreadData;
+
+static gboolean on_connect_done(gpointer user_data) {
+	WifiConnectThreadData *td = (WifiConnectThreadData *)user_data;
+	WifiHiddenConnectCtx *ctx = td->ctx;
+
+	if (td->bw->menu_window) {
+		gtk_spinner_stop(GTK_SPINNER(ctx->spinner));
+		gtk_widget_hide(ctx->spinner);
+		gtk_widget_set_sensitive(ctx->connect_btn, TRUE);
+		gtk_widget_set_sensitive(ctx->cancel_btn, TRUE);
+		gtk_widget_set_sensitive(ctx->ssid_entry, TRUE);
+		gtk_widget_set_sensitive(ctx->password_entry, TRUE);
+		ctx->connecting = FALSE;
+
+		if (td->error) {
+			char *display = g_strdup_printf("Connection failed: %s", td->error);
+			gtk_label_set_text(GTK_LABEL(ctx->error_label), display);
+			gtk_widget_show(ctx->error_label);
+			g_free(display);
+		} else {
+			if (wifi_refresh_pending) {
+				g_source_remove(wifi_refresh_pending);
+				wifi_refresh_pending = 0;
+			}
+			if (ctx->bw->cb_menu_main_box)
+				chromeos_menu_show_wifi_networks(ctx->bw, ctx->state);
+		}
+	}
+
+	g_free(td->error);
+	g_free(td->ssid);
+	g_free(td->password);
+	g_free(td);
+	return G_SOURCE_REMOVE;
+}
+
+static gpointer connect_thread_func(gpointer user_data) {
+	WifiConnectThreadData *td = (WifiConnectThreadData *)user_data;
+	char *error_msg = NULL;
+	nmcli_connect_hidden(td->ssid, td->password, &error_msg);
+	td->error = error_msg;
+	g_idle_add(on_connect_done, td);
+	return NULL;
+}
+
+static void on_hidden_connect_clicked(GtkWidget *widget, gpointer data) {
+	(void)widget;
+	WifiHiddenConnectCtx *ctx = (WifiHiddenConnectCtx *)data;
+	const char *ssid = gtk_entry_get_text(GTK_ENTRY(ctx->ssid_entry));
+	const char *password = gtk_entry_get_text(GTK_ENTRY(ctx->password_entry));
+	if (!ssid || ssid[0] == '\0' || ctx->connecting)
+		return;
+
+	ctx->connecting = TRUE;
+	gtk_widget_hide(ctx->error_label);
+	gtk_spinner_start(GTK_SPINNER(ctx->spinner));
+	gtk_widget_show(ctx->spinner);
+	gtk_widget_set_sensitive(ctx->connect_btn, FALSE);
+	gtk_widget_set_sensitive(ctx->cancel_btn, FALSE);
+	gtk_widget_set_sensitive(ctx->ssid_entry, FALSE);
+	gtk_widget_set_sensitive(ctx->password_entry, FALSE);
+
+	WifiConnectThreadData *td = g_new0(WifiConnectThreadData, 1);
+	td->ctx = ctx;
+	td->bw = ctx->bw;
+	td->ssid = g_strdup(ssid);
+	td->password = g_strdup(password);
+
+	g_thread_new("wifi-connect", connect_thread_func, td);
+}
+
 static void on_password_visibility_clicked(GtkWidget *widget, gpointer data) {
 	(void)widget;
 	PasswordToggleCtx *ctx = (PasswordToggleCtx *)data;
@@ -103,6 +264,7 @@ static void on_password_visibility_clicked(GtkWidget *widget, gpointer data) {
 
 static void show_wifi_password_entry(BarWindow *bw, AppState *state, const char *ssid) {
 	chromeos_menu_clear(bw);
+	g_object_set_data(G_OBJECT(bw->cb_menu_main_box), "current-view", "wifi-password");
 
 	GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
 	gtk_style_context_add_class(gtk_widget_get_style_context(header), "cb-menu-header");
@@ -140,7 +302,9 @@ static void show_wifi_password_entry(BarWindow *bw, AppState *state, const char 
 
 	GtkWidget *visibility_btn = gtk_button_new_with_label(ICON_EYE);
 	gtk_style_context_add_class(gtk_widget_get_style_context(visibility_btn), "cb-menu-icon-btn");
-	gtk_widget_set_size_request(visibility_btn, 36, 36);
+	gtk_style_context_add_class(gtk_widget_get_style_context(visibility_btn), "cb-menu-eye-btn");
+	gtk_widget_set_halign(visibility_btn, GTK_ALIGN_CENTER);
+	gtk_widget_set_valign(visibility_btn, GTK_ALIGN_CENTER);
 	PasswordToggleCtx *toggle_ctx = g_new0(PasswordToggleCtx, 1);
 	toggle_ctx->entry = entry;
 	toggle_ctx->button = visibility_btn;
@@ -150,32 +314,150 @@ static void show_wifi_password_entry(BarWindow *bw, AppState *state, const char 
 
 	gtk_box_pack_start(GTK_BOX(content), password_row, FALSE, FALSE, 0);
 
-	GtkWidget *actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-	gtk_widget_set_halign(actions, GTK_ALIGN_END);
+	GtkWidget *actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+	gtk_widget_set_halign(actions, GTK_ALIGN_FILL);
+	gtk_widget_set_hexpand(actions, TRUE);
 
 	GtkWidget *cancel_btn = gtk_button_new_with_label("Cancel");
 	gtk_style_context_add_class(gtk_widget_get_style_context(cancel_btn), "cb-menu-dialog-btn");
+	gtk_widget_set_hexpand(cancel_btn, TRUE);
 	MenuCtx *ctx2 = g_new0(MenuCtx, 1);
 	ctx2->bw = bw;
 	ctx2->state = state;
 	g_signal_connect_data(cancel_btn, "clicked", G_CALLBACK(on_cancel_wifi_clicked), ctx2, (GClosureNotify)chromeos_menu_free_generic_ctx,
 						  0);
-	gtk_box_pack_start(GTK_BOX(actions), cancel_btn, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(actions), cancel_btn, TRUE, TRUE, 0);
 
 	GtkWidget *connect_btn = gtk_button_new_with_label("Connect");
 	gtk_style_context_add_class(gtk_widget_get_style_context(connect_btn), "cb-menu-dialog-btn");
 	gtk_style_context_add_class(gtk_widget_get_style_context(connect_btn), "cb-menu-dialog-btn-primary");
+	gtk_widget_set_hexpand(connect_btn, TRUE);
 	WifiConnectCtx *conn_ctx = g_new0(WifiConnectCtx, 1);
 	conn_ctx->bw = bw;
 	conn_ctx->state = state;
 	conn_ctx->ssid = g_strdup(ssid);
 	conn_ctx->password_entry = entry;
 	g_signal_connect_data(connect_btn, "clicked", G_CALLBACK(on_connect_clicked), conn_ctx, (GClosureNotify)free_wifi_connect_ctx, 0);
-	gtk_box_pack_start(GTK_BOX(actions), connect_btn, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(actions), connect_btn, TRUE, TRUE, 0);
 
 	gtk_box_pack_start(GTK_BOX(content), actions, FALSE, FALSE, 0);
 
 	gtk_widget_show_all(bw->cb_menu_main_box);
+}
+
+static void show_wifi_hidden_network_dialog(BarWindow *bw, AppState *state, const char *preset_ssid) {
+	chromeos_menu_clear(bw);
+	g_object_set_data(G_OBJECT(bw->cb_menu_main_box), "current-view", "wifi-hidden");
+
+	GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+	gtk_style_context_add_class(gtk_widget_get_style_context(header), "cb-menu-header");
+
+	GtkWidget *back_btn = chromeos_menu_create_header_back_button();
+	MenuCtx *ctx = g_new0(MenuCtx, 1);
+	ctx->bw = bw;
+	ctx->state = state;
+	g_signal_connect_data(back_btn, "clicked", G_CALLBACK(on_cancel_wifi_clicked), ctx, (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
+	gtk_box_pack_start(GTK_BOX(header), back_btn, FALSE, FALSE, 0);
+
+	GtkWidget *title = gtk_label_new("Hidden Network");
+	gtk_style_context_add_class(gtk_widget_get_style_context(title), "cb-menu-header-title");
+	gtk_box_pack_start(GTK_BOX(header), title, FALSE, FALSE, 0);
+
+	gtk_box_pack_start(GTK_BOX(bw->cb_menu_main_box), header, FALSE, FALSE, 0);
+
+	GtkWidget *content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+	gtk_style_context_add_class(gtk_widget_get_style_context(content), "cb-menu-content");
+	gtk_box_pack_start(GTK_BOX(bw->cb_menu_main_box), content, TRUE, TRUE, 0);
+
+	GtkWidget *ssid_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+	gtk_style_context_add_class(gtk_widget_get_style_context(ssid_row), "cb-menu-password-row");
+
+	GtkWidget *ssid_entry = gtk_entry_new();
+	gtk_style_context_add_class(gtk_widget_get_style_context(ssid_entry), "cb-menu-entry");
+	gtk_entry_set_placeholder_text(GTK_ENTRY(ssid_entry), "Network name (SSID)");
+	if (preset_ssid && preset_ssid[0] != '\0') {
+		gtk_entry_set_text(GTK_ENTRY(ssid_entry), preset_ssid);
+		gtk_editable_set_editable(GTK_EDITABLE(ssid_entry), FALSE);
+	}
+	gtk_box_pack_start(GTK_BOX(ssid_row), ssid_entry, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(content), ssid_row, FALSE, FALSE, 0);
+
+	GtkWidget *password_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+	gtk_style_context_add_class(gtk_widget_get_style_context(password_row), "cb-menu-password-row");
+
+	GtkWidget *password_entry = gtk_entry_new();
+	gtk_style_context_add_class(gtk_widget_get_style_context(password_entry), "cb-menu-entry");
+	gtk_entry_set_visibility(GTK_ENTRY(password_entry), FALSE);
+	gtk_entry_set_placeholder_text(GTK_ENTRY(password_entry), "Password");
+	if (preset_ssid && preset_ssid[0] != '\0')
+		gtk_widget_grab_focus(password_entry);
+	gtk_box_pack_start(GTK_BOX(password_row), password_entry, TRUE, TRUE, 0);
+
+	GtkWidget *visibility_btn = gtk_button_new_with_label(ICON_EYE);
+	gtk_style_context_add_class(gtk_widget_get_style_context(visibility_btn), "cb-menu-icon-btn");
+	gtk_style_context_add_class(gtk_widget_get_style_context(visibility_btn), "cb-menu-eye-btn");
+	gtk_widget_set_halign(visibility_btn, GTK_ALIGN_CENTER);
+	gtk_widget_set_valign(visibility_btn, GTK_ALIGN_CENTER);
+	PasswordToggleCtx *toggle_ctx = g_new0(PasswordToggleCtx, 1);
+	toggle_ctx->entry = password_entry;
+	toggle_ctx->button = visibility_btn;
+	g_signal_connect_data(visibility_btn, "clicked", G_CALLBACK(on_password_visibility_clicked), toggle_ctx,
+						  (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
+	gtk_box_pack_start(GTK_BOX(password_row), visibility_btn, FALSE, FALSE, 0);
+
+	gtk_box_pack_start(GTK_BOX(content), password_row, FALSE, FALSE, 0);
+
+	GtkWidget *error_label = gtk_label_new(NULL);
+	gtk_style_context_add_class(gtk_widget_get_style_context(error_label), "cb-menu-error");
+	gtk_label_set_line_wrap(GTK_LABEL(error_label), TRUE);
+	gtk_widget_set_no_show_all(error_label, TRUE);
+	gtk_box_pack_start(GTK_BOX(content), error_label, FALSE, FALSE, 0);
+
+	GtkWidget *spinner = gtk_spinner_new();
+	gtk_widget_set_halign(spinner, GTK_ALIGN_CENTER);
+	gtk_widget_set_no_show_all(spinner, TRUE);
+	gtk_box_pack_start(GTK_BOX(content), spinner, FALSE, FALSE, 8);
+
+	GtkWidget *actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+	gtk_widget_set_halign(actions, GTK_ALIGN_FILL);
+	gtk_widget_set_hexpand(actions, TRUE);
+
+	GtkWidget *cancel_btn = gtk_button_new_with_label("Cancel");
+	gtk_style_context_add_class(gtk_widget_get_style_context(cancel_btn), "cb-menu-dialog-btn");
+	gtk_widget_set_hexpand(cancel_btn, TRUE);
+	MenuCtx *ctx2 = g_new0(MenuCtx, 1);
+	ctx2->bw = bw;
+	ctx2->state = state;
+	g_signal_connect_data(cancel_btn, "clicked", G_CALLBACK(on_cancel_wifi_clicked), ctx2, (GClosureNotify)chromeos_menu_free_generic_ctx,
+						  0);
+	gtk_box_pack_start(GTK_BOX(actions), cancel_btn, TRUE, TRUE, 0);
+
+	GtkWidget *connect_btn = gtk_button_new_with_label("Connect");
+	gtk_style_context_add_class(gtk_widget_get_style_context(connect_btn), "cb-menu-dialog-btn");
+	gtk_style_context_add_class(gtk_widget_get_style_context(connect_btn), "cb-menu-dialog-btn-primary");
+	gtk_widget_set_hexpand(connect_btn, TRUE);
+	WifiHiddenConnectCtx *conn_ctx = g_new0(WifiHiddenConnectCtx, 1);
+	conn_ctx->bw = bw;
+	conn_ctx->state = state;
+	conn_ctx->ssid_entry = ssid_entry;
+	conn_ctx->password_entry = password_entry;
+	conn_ctx->error_label = error_label;
+	conn_ctx->spinner = spinner;
+	conn_ctx->connect_btn = connect_btn;
+	conn_ctx->cancel_btn = cancel_btn;
+	g_signal_connect_data(connect_btn, "clicked", G_CALLBACK(on_hidden_connect_clicked), conn_ctx,
+						  (GClosureNotify)free_wifi_hidden_connect_ctx, 0);
+	gtk_box_pack_start(GTK_BOX(actions), connect_btn, TRUE, TRUE, 0);
+
+	gtk_box_pack_start(GTK_BOX(content), actions, FALSE, FALSE, 0);
+
+	gtk_widget_show_all(bw->cb_menu_main_box);
+}
+
+static void on_hidden_network_clicked(GtkWidget *widget, gpointer data) {
+	(void)widget;
+	MenuCtx *ctx = (MenuCtx *)data;
+	show_wifi_hidden_network_dialog(ctx->bw, ctx->state, NULL);
 }
 
 static void on_wifi_net_clicked(GtkWidget *widget, gpointer data) {
@@ -184,6 +466,8 @@ static void on_wifi_net_clicked(GtkWidget *widget, gpointer data) {
 	if (ctx->active) {
 		wifi_disconnect();
 		chromeos_menu_show_wifi_networks(ctx->bw, ctx->state);
+	} else if (ctx->hidden) {
+		show_wifi_hidden_network_dialog(ctx->bw, ctx->state, ctx->ssid);
 	} else if (ctx->security && strlen(ctx->security) > 0 && strcmp(ctx->security, "--") != 0) {
 		if (wifi_has_saved_connection(ctx->ssid))
 			wifi_connect(ctx->ssid, NULL, NULL, NULL);
@@ -194,7 +478,17 @@ static void on_wifi_net_clicked(GtkWidget *widget, gpointer data) {
 	}
 }
 
-static gboolean chromeos_menu_show_wifi_networks_idle(BarWindow *bw) {
+static gboolean wifi_refresh_idle(gpointer user_data) {
+	wifi_refresh_pending = 0;
+	BarWindow *bw = (BarWindow *)user_data;
+
+	/* Only refresh if still on the wifi-networks view */
+	if (!bw->cb_menu_main_box)
+		return G_SOURCE_REMOVE;
+	const char *view = g_object_get_data(G_OBJECT(bw->cb_menu_main_box), "current-view");
+	if (!view || strcmp(view, "wifi-networks") != 0)
+		return G_SOURCE_REMOVE;
+
 	chromeos_menu_show_wifi_networks(bw, bw->state);
 	return G_SOURCE_REMOVE;
 }
@@ -206,7 +500,9 @@ void chromeos_menu_refresh_wifi_list_if_open(AppState *state) {
 		if (bw->cb_menu_main_box) {
 			const char *view = g_object_get_data(G_OBJECT(bw->cb_menu_main_box), "current-view");
 			if (view && strcmp(view, "wifi-networks") == 0) {
-				g_idle_add((GSourceFunc)chromeos_menu_show_wifi_networks_idle, bw);
+				if (wifi_refresh_pending)
+					g_source_remove(wifi_refresh_pending);
+				wifi_refresh_pending = g_timeout_add(500, wifi_refresh_idle, bw);
 			}
 		}
 	}
@@ -217,7 +513,49 @@ void chromeos_menu_show_wifi_networks(BarWindow *bw, AppState *state) {
 	chromeos_menu_clear(bw);
 	g_object_set_data(G_OBJECT(bw->cb_menu_main_box), "current-view", "wifi-networks");
 
-	chromeos_menu_create_subpage_header(bw, state, "WiFi");
+	GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+	gtk_style_context_add_class(gtk_widget_get_style_context(header), "cb-menu-header");
+
+	GtkWidget *back_btn = chromeos_menu_create_header_back_button();
+	MenuCtx *ctx = g_new0(MenuCtx, 1);
+	ctx->bw = bw;
+	ctx->state = state;
+	g_signal_connect_data(back_btn, "clicked", G_CALLBACK(chromeos_menu_on_back_to_main_clicked), ctx,
+						  (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
+	gtk_box_pack_start(GTK_BOX(header), back_btn, FALSE, FALSE, 0);
+
+	GtkWidget *title_lbl = gtk_label_new("WiFi");
+	gtk_style_context_add_class(gtk_widget_get_style_context(title_lbl), "cb-menu-header-title");
+	gtk_box_pack_start(GTK_BOX(header), title_lbl, FALSE, FALSE, 0);
+
+	pthread_mutex_lock(&state->mutex);
+	gboolean wifi_on = state->sys_data.wifi_enabled;
+	pthread_mutex_unlock(&state->mutex);
+
+	GtkWidget *toggle = gtk_switch_new();
+	gtk_style_context_add_class(gtk_widget_get_style_context(toggle), "cb-menu-led-toggle");
+	gtk_switch_set_active(GTK_SWITCH(toggle), wifi_on);
+	gtk_widget_set_halign(toggle, GTK_ALIGN_CENTER);
+	gtk_widget_set_valign(toggle, GTK_ALIGN_CENTER);
+	MenuCtx *toggle_ctx = g_new0(MenuCtx, 1);
+	toggle_ctx->bw = bw;
+	toggle_ctx->state = state;
+	g_signal_connect_data(toggle, "notify::active", G_CALLBACK(chromeos_menu_on_wifi_toggled), toggle_ctx,
+						  (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
+	gtk_box_pack_end(GTK_BOX(header), toggle, FALSE, FALSE, 0);
+
+	GtkWidget *hidden_btn = gtk_button_new_with_label("+");
+	gtk_style_context_add_class(gtk_widget_get_style_context(hidden_btn), "cb-menu-icon-btn");
+	gtk_widget_set_halign(hidden_btn, GTK_ALIGN_CENTER);
+	gtk_widget_set_valign(hidden_btn, GTK_ALIGN_CENTER);
+	MenuCtx *hidden_ctx = g_new0(MenuCtx, 1);
+	hidden_ctx->bw = bw;
+	hidden_ctx->state = state;
+	g_signal_connect_data(hidden_btn, "clicked", G_CALLBACK(on_hidden_network_clicked), hidden_ctx,
+						  (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
+	gtk_box_pack_end(GTK_BOX(header), hidden_btn, FALSE, FALSE, 0);
+
+	gtk_box_pack_start(GTK_BOX(bw->cb_menu_main_box), header, FALSE, FALSE, 0);
 
 	GtkWidget *sep = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
 	gtk_box_pack_start(GTK_BOX(bw->cb_menu_main_box), sep, FALSE, FALSE, 8);
@@ -231,7 +569,11 @@ void chromeos_menu_show_wifi_networks(BarWindow *bw, AppState *state) {
 	gtk_box_set_spacing(GTK_BOX(list_box), 2);
 	gtk_container_add(GTK_CONTAINER(scroll), list_box);
 
-	GPtrArray *networks = wifi_list_networks();
+	GPtrArray *networks = NULL;
+	if (wifi_on)
+		networks = wifi_list_networks();
+	else
+		networks = g_ptr_array_new();
 	for (guint i = 0; i < networks->len; i++) {
 		WifiNetwork *network = g_ptr_array_index(networks, i);
 		GtkWidget *btn = gtk_button_new();
@@ -248,11 +590,11 @@ void chromeos_menu_show_wifi_networks(BarWindow *bw, AppState *state) {
 		gtk_widget_set_halign(name_lbl, GTK_ALIGN_START);
 		gtk_box_pack_start(GTK_BOX(text_box), name_lbl, FALSE, FALSE, 0);
 
-		const char *security_text = network->secured ? "Protected" : "Open";
+		const char *security_text = network->hidden ? "Hidden" : (network->secured ? "Protected" : "Open");
 		char subtitle[96];
 		if (network->active)
 			snprintf(subtitle, sizeof(subtitle), "<span foreground=\"#7fd88f\">%s</span> - Connected", security_text);
-		else if (network->secured)
+		else if (network->secured || network->hidden)
 			snprintf(subtitle, sizeof(subtitle), "<span foreground=\"#7fd88f\">%s</span>", security_text);
 		else
 			snprintf(subtitle, sizeof(subtitle), "%s", security_text);
@@ -278,11 +620,30 @@ void chromeos_menu_show_wifi_networks(BarWindow *bw, AppState *state) {
 		net_ctx->ssid = g_strdup(network->ssid);
 		net_ctx->security = g_strdup(network->security);
 		net_ctx->active = network->active;
+		net_ctx->hidden = network->hidden;
 
 		g_signal_connect_data(btn, "clicked", G_CALLBACK(on_wifi_net_clicked), net_ctx, (GClosureNotify)free_wifi_net_ctx, 0);
 		gtk_box_pack_start(GTK_BOX(list_box), btn, FALSE, FALSE, 0);
 	}
 	g_ptr_array_unref(networks);
+
+	if (!wifi_on) {
+		GtkWidget *empty_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+		gtk_widget_set_valign(empty_box, GTK_ALIGN_CENTER);
+		gtk_widget_set_halign(empty_box, GTK_ALIGN_CENTER);
+		gtk_widget_set_vexpand(empty_box, TRUE);
+
+		GtkWidget *empty_icon = gtk_label_new(ICON_WIFI_OFF);
+		gtk_style_context_add_class(gtk_widget_get_style_context(empty_icon), "icon");
+		gtk_widget_set_margin_bottom(empty_icon, 8);
+		gtk_box_pack_start(GTK_BOX(empty_box), empty_icon, FALSE, FALSE, 0);
+
+		GtkWidget *empty_lbl = gtk_label_new("WiFi is disabled");
+		gtk_style_context_add_class(gtk_widget_get_style_context(empty_lbl), "subtitle");
+		gtk_box_pack_start(GTK_BOX(empty_box), empty_lbl, FALSE, FALSE, 0);
+
+		gtk_box_pack_start(GTK_BOX(list_box), empty_box, FALSE, FALSE, 0);
+	}
 
 	gtk_widget_show_all(bw->cb_menu_main_box);
 }

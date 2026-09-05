@@ -135,6 +135,10 @@ static void update_wifi_data(AppState *state) {
 	}
 
 	pthread_mutex_lock(&state->mutex);
+	int prev_connected = state->sys_data.wifi_connected;
+	int prev_enabled = state->sys_data.wifi_enabled;
+	char prev_ssid[64];
+	g_strlcpy(prev_ssid, state->sys_data.wifi_ssid, sizeof(prev_ssid));
 	state->sys_data.wifi_adapter_exists = exists;
 	state->sys_data.wifi_enabled = enabled;
 	state->sys_data.wifi_connected = connected;
@@ -144,8 +148,7 @@ static void update_wifi_data(AppState *state) {
 
 	g_idle_add(update_widgets_idle, state);
 
-	/* Notify registered listener (e.g. ChromeOS menu) */
-	if (wifi_changed_cb)
+	if (wifi_changed_cb && (prev_connected != connected || prev_enabled != enabled || strcmp(prev_ssid, ssid) != 0))
 		wifi_changed_cb(state);
 }
 
@@ -278,6 +281,85 @@ GPtrArray *wifi_list_networks(void) {
 		g_free(ssid);
 	}
 
+	/* Build set of NM connections marked hidden */
+	const GPtrArray *connections = nm_client_get_connections(client);
+	GHashTable *nm_hidden = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+	for (guint i = 0; connections && i < connections->len; i++) {
+		NMConnection *conn = g_ptr_array_index(connections, i);
+		NMSettingWireless *s_wifi = nm_connection_get_setting_wireless(conn);
+		if (!s_wifi)
+			continue;
+
+		if (!nm_setting_wireless_get_hidden(s_wifi))
+			continue;
+
+		GBytes *conn_ssid_bytes = nm_setting_wireless_get_ssid(s_wifi);
+		if (!conn_ssid_bytes)
+			continue;
+
+		gsize len = 0;
+		const guint8 *data = g_bytes_get_data(conn_ssid_bytes, &len);
+		char *conn_ssid_str = nm_utils_ssid_to_utf8(data, len);
+		if (conn_ssid_str && conn_ssid_str[0] != '\0')
+			g_hash_table_insert(nm_hidden, conn_ssid_str, GUINT_TO_POINTER(1));
+		else
+			g_free(conn_ssid_str);
+	}
+
+	/* Mark visible APs as hidden if NM says so */
+	for (guint i = 0; i < networks->len; i++) {
+		WifiNetwork *n = g_ptr_array_index(networks, i);
+		if (g_hash_table_lookup(nm_hidden, n->ssid)) {
+			n->hidden = TRUE;
+			g_free(n->security);
+			n->security = g_strdup("Hidden");
+		}
+	}
+
+	/* Add saved hidden networks that aren't currently visible in scans */
+	for (guint i = 0; connections && i < connections->len; i++) {
+		NMConnection *conn = g_ptr_array_index(connections, i);
+		NMSettingWireless *s_wifi = nm_connection_get_setting_wireless(conn);
+		if (!s_wifi)
+			continue;
+
+		GBytes *conn_ssid_bytes = nm_setting_wireless_get_ssid(s_wifi);
+		if (!conn_ssid_bytes)
+			continue;
+
+		gsize len = 0;
+		const guint8 *data = g_bytes_get_data(conn_ssid_bytes, &len);
+		char *conn_ssid_str = nm_utils_ssid_to_utf8(data, len);
+		if (!conn_ssid_str || conn_ssid_str[0] == '\0') {
+			g_free(conn_ssid_str);
+			continue;
+		}
+
+		if (g_hash_table_lookup(by_ssid, conn_ssid_str)) {
+			g_free(conn_ssid_str);
+			continue;
+		}
+
+		gboolean is_hidden = nm_setting_wireless_get_hidden(s_wifi);
+
+		if (!is_hidden) {
+			g_free(conn_ssid_str);
+			continue;
+		}
+
+		WifiNetwork *network = g_new0(WifiNetwork, 1);
+		network->ssid = g_strdup(conn_ssid_str);
+		network->hidden = TRUE;
+		network->secured = TRUE;
+		network->security = g_strdup("Hidden");
+		g_ptr_array_add(networks, network);
+		g_hash_table_insert(by_ssid, g_strdup(conn_ssid_str), network);
+
+		g_free(conn_ssid_str);
+	}
+
+	g_hash_table_destroy(nm_hidden);
+
 	g_hash_table_destroy(by_ssid);
 	g_ptr_array_sort(networks, compare_networks);
 	return networks;
@@ -288,7 +370,7 @@ typedef struct {
 	gpointer user_data;
 } WifiConnectCallbackData;
 
-static void activate_connection_cb(GObject *object, GAsyncResult *result, gpointer user_data) {
+static void add_and_activate_cb(GObject *object, GAsyncResult *result, gpointer user_data) {
 	GError *error = NULL;
 	NMActiveConnection *active = nm_client_add_and_activate_connection_finish(NM_CLIENT(object), result, &error);
 	if (active)
@@ -296,6 +378,22 @@ static void activate_connection_cb(GObject *object, GAsyncResult *result, gpoint
 	gboolean success = (error == NULL);
 	if (error) {
 		g_warning("Failed to connect to WiFi: %s", error->message);
+		g_error_free(error);
+	}
+	WifiConnectCallbackData *cb_data = (WifiConnectCallbackData *)user_data;
+	if (cb_data && cb_data->callback)
+		cb_data->callback(success, cb_data->user_data);
+	g_free(cb_data);
+}
+
+static void activate_saved_cb(GObject *object, GAsyncResult *result, gpointer user_data) {
+	GError *error = NULL;
+	NMActiveConnection *active = nm_client_activate_connection_finish(NM_CLIENT(object), result, &error);
+	if (active)
+		g_object_unref(active);
+	gboolean success = (error == NULL);
+	if (error) {
+		g_warning("Failed to activate saved WiFi: %s", error->message);
 		g_error_free(error);
 	}
 	WifiConnectCallbackData *cb_data = (WifiConnectCallbackData *)user_data;
@@ -336,6 +434,18 @@ gboolean wifi_has_saved_connection(const char *ssid) {
 	return FALSE;
 }
 
+const char *wifi_get_interface(void) {
+	NMClient *client = wifi_nm_client;
+	if (!client)
+		return NULL;
+
+	NMDeviceWifi *wifi = find_wifi_device(client);
+	if (!wifi)
+		return NULL;
+
+	return nm_device_get_iface(NM_DEVICE(wifi));
+}
+
 void wifi_connect(const char *ssid, const char *password, WifiConnectCallback callback, gpointer user_data) {
 	if (!ssid || ssid[0] == '\0')
 		return;
@@ -373,7 +483,7 @@ void wifi_connect(const char *ssid, const char *password, WifiConnectCallback ca
 			cb_data->callback = callback;
 			cb_data->user_data = user_data;
 			nm_client_activate_connection_async(client, conn, NM_DEVICE(wifi), ap ? nm_object_get_path(NM_OBJECT(ap)) : NULL, NULL,
-											   activate_connection_cb, cb_data);
+											   activate_saved_cb, cb_data);
 			return;
 		}
 	}
@@ -388,7 +498,8 @@ void wifi_connect(const char *ssid, const char *password, WifiConnectCallback ca
 
 	NMSettingWireless *s_wifi_new = NM_SETTING_WIRELESS(nm_setting_wireless_new());
 	GBytes *ssid_bytes = g_bytes_new(ssid, strlen(ssid));
-	g_object_set(s_wifi_new, NM_SETTING_WIRELESS_SSID, ssid_bytes, NM_SETTING_WIRELESS_MODE, NM_SETTING_WIRELESS_MODE_INFRA, NULL);
+	g_object_set(s_wifi_new, NM_SETTING_WIRELESS_SSID, ssid_bytes, NM_SETTING_WIRELESS_MODE, NM_SETTING_WIRELESS_MODE_INFRA,
+				 NM_SETTING_WIRELESS_HIDDEN, !ap, NULL);
 	g_bytes_unref(ssid_bytes);
 	nm_connection_add_setting(connection, NM_SETTING(s_wifi_new));
 
@@ -401,8 +512,9 @@ void wifi_connect(const char *ssid, const char *password, WifiConnectCallback ca
 	WifiConnectCallbackData *cb_data = g_new0(WifiConnectCallbackData, 1);
 	cb_data->callback = callback;
 	cb_data->user_data = user_data;
-	nm_client_add_and_activate_connection_async(client, connection, NM_DEVICE(wifi), ap ? nm_object_get_path(NM_OBJECT(ap)) : NULL, NULL,
-											   activate_connection_cb, cb_data);
+	nm_client_add_and_activate_connection_async(client, connection, NM_DEVICE(wifi),
+											   ap ? nm_object_get_path(NM_OBJECT(ap)) : nm_object_get_path(NM_OBJECT(wifi)),
+											   NULL, add_and_activate_cb, cb_data);
 	g_object_unref(connection);
 }
 

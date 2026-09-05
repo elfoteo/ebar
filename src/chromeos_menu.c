@@ -181,6 +181,9 @@ static gboolean on_focus_out(GtkWidget *widget, GdkEventFocus *event, gpointer d
 	if (pointer_is_over_widget(widget) || (bw && pointer_is_over_widget(bw->window)))
 		return TRUE;
 
+	if (bw && bw->cb_menu_main_box && pointer_is_over_widget(bw->cb_menu_main_box))
+		return TRUE;
+
 	last_destroy_time = get_time_ms();
 	gtk_widget_destroy(widget);
 	return FALSE;
@@ -513,7 +516,7 @@ void chromeos_menu_apply_css(AppState *state) {
 		  "  background-color: #3c3c3c; "
 		  "  color: #e8eaed; "
 		  "  border-radius: 18px; "
-		  "  padding: 8px 12px; "
+		  "  padding: 0 12px; "
 		  "  border: 1px solid rgba(255,255,255,0.1); "
 		  "  min-height: 36px; "
 		  "} ");
@@ -526,6 +529,7 @@ void chromeos_menu_apply_css(AppState *state) {
 		  "  border-radius: 18px; "
 		  "  min-width: 36px; "
 		  "  min-height: 36px; "
+		  "  padding: 0; "
 		  "  margin-left: 8px; "
 		  "} ");
 		A(".cb-menu-icon-btn:hover { "
@@ -535,12 +539,14 @@ void chromeos_menu_apply_css(AppState *state) {
 		  "  font-family: \"JetBrainsMonoNerdFont\"; "
 		  "  font-size: 18px; "
 		  "} ");
+		A(".cb-menu-eye-btn label { "
+		  "  margin-left: -4px; "
+		  "} ");
 		A(".cb-menu-dialog-btn { "
 		  "  background-color: #3c3c3c; "
 		  "  color: #e8eaed; "
 		  "  border-radius: 18px; "
 		  "  padding: 0 18px; "
-		  "  min-width: 96px; "
 		  "  min-height: 36px; "
 		  "  font-weight: 600; "
 		  "} ");
@@ -556,6 +562,11 @@ void chromeos_menu_apply_css(AppState *state) {
 		  "  background-color: %s; "
 		  "} ",
 		  accent_light);
+		A(".cb-menu-error { "
+		  "  color: #f28b82; "
+		  "  font-size: 12px; "
+		  "  padding: 8px 0 0 0; "
+		  "} ");
 		A(".cb-menu-wifi-ssid { "
 		  "  color: #e8eaed; "
 		  "  font-size: 15px; "

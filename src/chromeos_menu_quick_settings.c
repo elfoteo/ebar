@@ -233,6 +233,15 @@ static void on_bluetooth_arrow_clicked(GtkWidget *widget, gpointer data) {
 	show_bluetooth_menu(ctx->bw, ctx->state);
 }
 
+static void on_bluetooth_toggled(GObject *object, GParamSpec *pspec, gpointer data) {
+	(void)pspec;
+	MenuCtx *ctx = (MenuCtx *)data;
+	int active = gtk_switch_get_active(GTK_SWITCH(object));
+	bluetooth_set_powered(active);
+	chromeos_menu_refresh_bluetooth_state(ctx->state);
+	show_bluetooth_menu(ctx->bw, ctx->state);
+}
+
 static void on_bluetooth_connect_finish(const char *path, int success, gpointer user_data) {
 	(void)path;
 	(void)success;
@@ -280,7 +289,38 @@ static int bluetooth_device_cmp(gconstpointer a, gconstpointer b) {
 static void show_bluetooth_menu(BarWindow *bw, AppState *state) {
 	chromeos_menu_clear(bw);
 
-	chromeos_menu_create_subpage_header(bw, state, "Bluetooth");
+	GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+	gtk_style_context_add_class(gtk_widget_get_style_context(header), "cb-menu-header");
+
+	GtkWidget *back_btn = chromeos_menu_create_header_back_button();
+	MenuCtx *back_ctx = g_new0(MenuCtx, 1);
+	back_ctx->bw = bw;
+	back_ctx->state = state;
+	g_signal_connect_data(back_btn, "clicked", G_CALLBACK(chromeos_menu_on_back_to_main_clicked), back_ctx,
+						  (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
+	gtk_box_pack_start(GTK_BOX(header), back_btn, FALSE, FALSE, 0);
+
+	GtkWidget *title_lbl = gtk_label_new("Bluetooth");
+	gtk_style_context_add_class(gtk_widget_get_style_context(title_lbl), "cb-menu-header-title");
+	gtk_box_pack_start(GTK_BOX(header), title_lbl, FALSE, FALSE, 0);
+
+	pthread_mutex_lock(&state->mutex);
+	gboolean bt_on = state->sys_data.bluetooth_powered;
+	pthread_mutex_unlock(&state->mutex);
+
+	GtkWidget *toggle = gtk_switch_new();
+	gtk_style_context_add_class(gtk_widget_get_style_context(toggle), "cb-menu-led-toggle");
+	gtk_switch_set_active(GTK_SWITCH(toggle), bt_on);
+	gtk_widget_set_halign(toggle, GTK_ALIGN_CENTER);
+	gtk_widget_set_valign(toggle, GTK_ALIGN_CENTER);
+	MenuCtx *toggle_ctx = g_new0(MenuCtx, 1);
+	toggle_ctx->bw = bw;
+	toggle_ctx->state = state;
+	g_signal_connect_data(toggle, "notify::active", G_CALLBACK(on_bluetooth_toggled), toggle_ctx,
+						  (GClosureNotify)chromeos_menu_free_generic_ctx, 0);
+	gtk_box_pack_end(GTK_BOX(header), toggle, FALSE, FALSE, 0);
+
+	gtk_box_pack_start(GTK_BOX(bw->cb_menu_main_box), header, FALSE, FALSE, 0);
 
 	GtkWidget *content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
 	gtk_style_context_add_class(gtk_widget_get_style_context(content), "cb-menu-content");
@@ -294,9 +334,21 @@ static void show_bluetooth_menu(BarWindow *bw, AppState *state) {
 	pthread_mutex_unlock(&state->mutex);
 
 	if (!exists || !powered) {
-		GtkWidget *fallback = gtk_label_new(!exists ? "No adapter" : "Bluetooth is off");
-		gtk_widget_set_halign(fallback, GTK_ALIGN_START);
-		gtk_box_pack_start(GTK_BOX(content), fallback, FALSE, FALSE, 0);
+		GtkWidget *empty_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+		gtk_widget_set_valign(empty_box, GTK_ALIGN_CENTER);
+		gtk_widget_set_halign(empty_box, GTK_ALIGN_CENTER);
+		gtk_widget_set_vexpand(empty_box, TRUE);
+
+		GtkWidget *empty_icon = gtk_label_new(ICON_BLUETOOTH_OFF);
+		gtk_style_context_add_class(gtk_widget_get_style_context(empty_icon), "icon");
+		gtk_widget_set_margin_bottom(empty_icon, 8);
+		gtk_box_pack_start(GTK_BOX(empty_box), empty_icon, FALSE, FALSE, 0);
+
+		GtkWidget *empty_lbl = gtk_label_new(!exists ? "No adapter" : "Bluetooth is off");
+		gtk_style_context_add_class(gtk_widget_get_style_context(empty_lbl), "subtitle");
+		gtk_box_pack_start(GTK_BOX(empty_box), empty_lbl, FALSE, FALSE, 0);
+
+		gtk_box_pack_start(GTK_BOX(content), empty_box, FALSE, FALSE, 0);
 		gtk_widget_show_all(bw->cb_menu_main_box);
 		return;
 	}

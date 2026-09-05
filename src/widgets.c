@@ -739,6 +739,7 @@ gboolean update_widgets_idle(gpointer data) {
 		last_d.vol_muted = -1;
 		last_d.visual_brightness = -1;
 		last_d.nightlight_level = -1;
+		last_d.is_playing = -1;
 		last_d_init = 1;
 	}
 	if (!last_ws_count_init) {

@@ -175,9 +175,11 @@ void config_load(Config *cfg) {
     /* ── Load from file ── */
     char path[512];
     const char *home = getenv("HOME");
+    if (!home) home = "/tmp";
     snprintf(path, sizeof(path), "%s/.config/ebar", home);
     mkdir(path, 0755);
-    strcat(path, "/ebar.conf");
+    size_t path_len = strlen(path);
+    snprintf(path + path_len, sizeof(path) - path_len, "/ebar.conf");
 
     if (access(path, F_OK) == -1)
         config_save_default(path);
@@ -240,7 +242,7 @@ void config_load(Config *cfg) {
             if      (!strcmp(key, "family")) g_strlcpy(cfg->font.family, val, sizeof(cfg->font.family));
             else if (!strcmp(key, "size"))   cfg->font.size = atoi(val);
         } else if (!strcmp(section, "workspaces")) {
-            if      (!strcmp(key, "count"))        cfg->workspaces.count = atoi(val);
+            if      (!strcmp(key, "count"))  { cfg->workspaces.count = atoi(val); if (cfg->workspaces.count > MAX_WORKSPACES) cfg->workspaces.count = MAX_WORKSPACES; }
             else if (!strcmp(key, "icon_empty"))   g_strlcpy(cfg->workspaces.icon_empty,    val, sizeof(cfg->workspaces.icon_empty));
             else if (!strcmp(key, "icon_occupied"))g_strlcpy(cfg->workspaces.icon_occupied,  val, sizeof(cfg->workspaces.icon_occupied));
             else if (!strcmp(key, "show_empty"))   cfg->workspaces.show_empty = (!strcmp(val, "true"));

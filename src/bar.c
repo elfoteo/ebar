@@ -224,12 +224,18 @@ void on_bar_window_destroy(GtkWidget *widget, gpointer data) {
     pthread_mutex_lock(&ctx->state->mutex);
     ctx->state->bar_windows = g_list_remove(ctx->state->bar_windows, ctx->bw);
     pthread_mutex_unlock(&ctx->state->mutex);
+    /* Null bar-window child pointers before destroying popup/menu/launcher
+     * windows.  GTK already destroyed the bar window's children when it
+     * emitted the "destroy" signal, so on_menu_destroy / on_launcher_destroy
+     * must not touch them. */
+    ctx->bw->cb_sys_label = NULL;
+    ctx->bw->cb_launcher_btn = NULL;
+    if (ctx->bw->popup_window)
+        gtk_widget_destroy(ctx->bw->popup_window);
     if (ctx->bw->menu_window)
         gtk_widget_destroy(ctx->bw->menu_window);
     if (ctx->bw->launcher_window)
         gtk_widget_destroy(ctx->bw->launcher_window);
-    if (ctx->bw->popup_window)
-        gtk_widget_destroy(ctx->bw->popup_window);
     g_free(ctx->bw);
     g_free(ctx);
 }

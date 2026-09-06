@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 
 #define VOLUME_SCROLL_STEP 2.0
 #define BRIGHTNESS_SCROLL_STEP 5.0
@@ -492,11 +493,19 @@ static void on_launcher_clicked(GtkWidget *widget, gpointer data) {
 	const char *action = (const char *)data;
 	if (!action || !*action)
 		return;
-	if (fork() == 0) {
-		setsid();
-		execl("/bin/sh", "sh", "-c", action, NULL);
-		exit(1);
+	pid_t pid = fork();
+	if (pid < 0)
+		return;
+	if (pid == 0) {
+		pid = fork();
+		if (pid == 0) {
+			setsid();
+			execl("/bin/sh", "sh", "-c", action, NULL);
+			_exit(127);
+		}
+		_exit(0);
 	}
+	waitpid(pid, NULL, 0);
 }
 
 GtkWidget *widget_launcher(BarWindow *bw, AppState *state) {
@@ -561,8 +570,9 @@ GtkWidget *widget_metrics(BarWindow *bw, AppState *state) {
 	for (int r = 0; r < 2; r++) {
 		for (int c = 0; c < 3; c++) {
 			MetricType type = state->config.metrics.layout[r][c];
+			int cell = r * 3 + c;
 			if (type != M_NONE && type < 6) {
-				gtk_grid_attach(GTK_GRID(grid), create_metric_box(icons[type], &bw->metrics_widgets[type], state->config.metrics.use_bars),
+				gtk_grid_attach(GTK_GRID(grid), create_metric_box(icons[type], &bw->metrics_widgets[cell], state->config.metrics.use_bars),
 								c, r, 1, 1);
 			}
 		}
@@ -788,8 +798,12 @@ gboolean update_widgets_idle(gpointer data) {
 		}
 
 		if (metrics_changed) {
-			for (int i = 0; i < 6; i++)
-				update_metric_widget(bw->metrics_widgets[i], (MetricType)i, &d, state->config.metrics.use_bars);
+			for (int r = 0; r < 2; r++)
+				for (int c = 0; c < 3; c++) {
+					int cell = r * 3 + c;
+					MetricType type = state->config.metrics.layout[r][c];
+					update_metric_widget(bw->metrics_widgets[cell], type, &d, state->config.metrics.use_bars);
+				}
 		}
 
 		if (vol_changed) {

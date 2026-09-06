@@ -80,6 +80,7 @@ static int nightlight_ipc(const char *cmd) {
 	}
 	char msg[128];
 	int len = snprintf(msg, sizeof(msg), "%s\n", cmd);
+	if (len >= (int)sizeof(msg)) len = (int)sizeof(msg) - 1;
 	if (write(fd, msg, len) < 0) {
 		close(fd);
 		return -1;

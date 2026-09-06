@@ -276,8 +276,11 @@ void sync_initial_state(AppState *state) {
             char *ws_p = strstr(p, "\"workspace\":");
             char *next = strstr(p + 1, "{");
             if (addr_p && ws_p && (!next || (addr_p < next && ws_p < next))) {
-                char *s = strchr(addr_p + 10, '"') + 1;
+                char *s = strchr(addr_p + 10, '"');
+                if (!s) { if (!next) break; p = next; continue; }
+                s++;
                 char *e = strchr(s, '"');
+                if (!e) { if (!next) break; p = next; continue; }
                 char *raw_addr = g_strndup(s, e - s);
                 char *addr_to_map = (strncmp(raw_addr, "0x", 2) == 0) ? g_strdup(raw_addr + 2) : g_strdup(raw_addr);
                 char *id_p = strstr(ws_p, "\"id\":");
@@ -373,9 +376,8 @@ void handle_ipc_line(AppState *state, char *line) {
             int old_ws = GPOINTER_TO_INT(old_ws_val);
             if (old_ws >= 1 && old_ws <= MAX_WORKSPACES) state->ws_win_count[old_ws]--;
         }
-        g_hash_table_insert(state->window_map, g_strdup(addr), GINT_TO_POINTER(new_ws));
+        g_hash_table_insert(state->window_map, addr, GINT_TO_POINTER(new_ws));
         if (new_ws >= 1 && new_ws <= MAX_WORKSPACES) state->ws_win_count[new_ws]++;
-        g_free(addr);
         pthread_mutex_unlock(&state->mutex);
         g_idle_add(update_ws_idle, state);
         g_idle_add(close_menus_idle, state);

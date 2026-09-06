@@ -177,7 +177,7 @@ void fetch_brightness(AppState *state) {
         fclose(f);
     }
 
-    float b = (float)actual * 100.0f / (float)max;
+    float b = (max > 0) ? (float)actual * 100.0f / (float)max : 0.0f;
     pthread_mutex_lock(&state->mutex);
     state->sys_data.brightness = b;
     pthread_mutex_unlock(&state->mutex);

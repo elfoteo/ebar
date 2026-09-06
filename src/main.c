@@ -125,6 +125,10 @@ int main(int argc, char **argv) {
 			}
 
 			float target = cur;
+			if (cfg.brightness.count == 0) {
+				fprintf(stderr, "No brightness levels configured\n");
+				return 1;
+			}
 			if (strcmp(argv[2], "raise") == 0) {
 				target = cfg.brightness.levels[0];
 				for (int i = 0; i < cfg.brightness.count; i++) {

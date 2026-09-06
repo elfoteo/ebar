@@ -198,7 +198,11 @@ static void on_screenshot_clicked(GtkWidget *widget, gpointer data) {
 	const char *app = state->config.chromeos.screenshot_app;
 
 	if (app[0] == '~') {
-		snprintf(cmd, 512, "%s%s", getenv("HOME"), app + 1);
+		const char *home = getenv("HOME");
+		if (home)
+			snprintf(cmd, 512, "%s%s", home, app + 1);
+		else
+			g_strlcpy(cmd, app, 512);
 	} else {
 		g_strlcpy(cmd, app, 512);
 	}
@@ -246,12 +250,24 @@ static void on_bluetooth_connect_finish(const char *path, int success, gpointer 
 	(void)path;
 	(void)success;
 	BluetoothConnectCtx *ctx = (BluetoothConnectCtx *)user_data;
-	pthread_mutex_lock(&ctx->state->mutex);
-	ctx->state->sys_data.bluetooth_connecting[0] = '\0';
-	pthread_mutex_unlock(&ctx->state->mutex);
+	AppState *state = ctx->state;
 
-	chromeos_menu_refresh_bluetooth_state(ctx->state);
-	show_bluetooth_menu(ctx->bw, ctx->state);
+	pthread_mutex_lock(&state->mutex);
+	state->sys_data.bluetooth_connecting[0] = '\0';
+	int bw_alive = 0;
+	for (GList *l = state->bar_windows; l != NULL; l = l->next) {
+		if (l->data == ctx->bw) {
+			bw_alive = 1;
+			break;
+		}
+	}
+	pthread_mutex_unlock(&state->mutex);
+
+	if (bw_alive) {
+		chromeos_menu_refresh_bluetooth_state(state);
+		if (ctx->bw->menu_window)
+			show_bluetooth_menu(ctx->bw, state);
+	}
 	g_free(ctx);
 }
 

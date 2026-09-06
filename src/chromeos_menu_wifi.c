@@ -30,12 +30,27 @@ typedef struct {
 	GtkWidget *connect_btn;
 	GtkWidget *cancel_btn;
 	gboolean connecting;
+	gpointer pending_td; /* WifiConnectThreadData* while a connect is in flight */
 } WifiHiddenConnectCtx;
+
+typedef struct WifiConnectThreadData {
+	WifiHiddenConnectCtx *ctx;
+	BarWindow *bw;
+	char *ssid;
+	char *password;
+	char *error;
+	gboolean cancel; /* set when the menu/bar window is destroyed while connecting */
+} WifiConnectThreadData;
 
 typedef struct {
 	GtkWidget *entry;
 	GtkWidget *button;
 } PasswordToggleCtx;
+
+static void wifi_cancel_pending_thread(WifiHiddenConnectCtx *ctx) {
+	if (ctx->pending_td)
+		((WifiConnectThreadData *)ctx->pending_td)->cancel = TRUE;
+}
 
 static void free_wifi_net_ctx(gpointer data, GClosure *closure) {
 	(void)closure;
@@ -55,6 +70,7 @@ static void free_wifi_connect_ctx(gpointer data, GClosure *closure) {
 static void free_wifi_hidden_connect_ctx(gpointer data, GClosure *closure) {
 	(void)closure;
 	WifiHiddenConnectCtx *ctx = (WifiHiddenConnectCtx *)data;
+	wifi_cancel_pending_thread(ctx);
 	g_free(ctx);
 }
 
@@ -176,19 +192,11 @@ static gboolean nmcli_connect_hidden(const char *ssid, const char *passphrase, c
 	return (exit_status == 0 && !err);
 }
 
-typedef struct {
-	WifiHiddenConnectCtx *ctx;
-	BarWindow *bw;
-	char *ssid;
-	char *password;
-	char *error;
-} WifiConnectThreadData;
-
 static gboolean on_connect_done(gpointer user_data) {
 	WifiConnectThreadData *td = (WifiConnectThreadData *)user_data;
-	WifiHiddenConnectCtx *ctx = td->ctx;
 
-	if (td->bw->menu_window) {
+	if (!td->cancel) {
+		WifiHiddenConnectCtx *ctx = td->ctx;
 		gtk_spinner_stop(GTK_SPINNER(ctx->spinner));
 		gtk_widget_hide(ctx->spinner);
 		gtk_widget_set_sensitive(ctx->connect_btn, TRUE);
@@ -196,6 +204,7 @@ static gboolean on_connect_done(gpointer user_data) {
 		gtk_widget_set_sensitive(ctx->ssid_entry, TRUE);
 		gtk_widget_set_sensitive(ctx->password_entry, TRUE);
 		ctx->connecting = FALSE;
+		ctx->pending_td = NULL;
 
 		if (td->error) {
 			char *display = g_strdup_printf("Connection failed: %s", td->error);
@@ -250,6 +259,7 @@ static void on_hidden_connect_clicked(GtkWidget *widget, gpointer data) {
 	td->bw = ctx->bw;
 	td->ssid = g_strdup(ssid);
 	td->password = g_strdup(password);
+	ctx->pending_td = td;
 
 	g_thread_new("wifi-connect", connect_thread_func, td);
 }

@@ -183,8 +183,8 @@ temp_path       = auto
 
 [nightlight]
 # Requires hyprsunset running (exec-once = hyprsunset in hyprland.conf)
-temp_max        = 6500   # white-point temperature (K) — identity value when off
-temp_min        = 5400   # warm night temperature (K) — applied at level 100
+temp_max        = 6500   # white-point temperature (K) - identity value when off
+temp_min        = 5400   # warm night temperature (K) - applied at level 100
 gamma_max       = 100    # full brightness gamma
 gamma_min       = 75     # reduced gamma at maximum nightlight level
 step            = 5      # level change per scroll tick (range 0–100)
@@ -195,11 +195,24 @@ levels          = 100 82 68 54 42 31 21 12 4 1 0
 transition_ms   = 200    # transition time in milliseconds
 
 [launcher]
-# Format: app = action:icon_path
+# Format for pinned apps: app = action:icon_path
 # Icon path can be absolute or relative to ~/.config/ebar/
-# If the path is just an icon name (e.g. firefox), it will use the system theme icon
 app             = firefox:firefox.svg
 app             = alacritty:utilities-terminal
+#
+# Grid filter: controls which apps appear in the launcher popup grid.
+#   only  = whitelist - only show apps whose desktop ID matches a filter substring
+#   except = blacklist - show all apps EXCEPT those matching a filter substring
+#   (empty) = show all apps
+grid_filter_mode = only
+grid_filter     = chromium, nemo, kitty
+#
+# Custom icons for launcher grid apps: grid_app = desktop_id:name:icon_path
+# desktop_id is the .desktop file ID (e.g. org.chromium.Chromium.desktop)
+# name overrides the displayed app name (optional, can be just desktop_id:icon_path)
+grid_app        = chromium:chrome:chrome.svg
+grid_app        = nemo:files:files.svg
+grid_app        = kitty:terminal:terminal.svg
 
 [chromeos]
 accent_color    = #0179d4

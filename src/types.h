@@ -7,6 +7,7 @@
 
 #define MAX_WORKSPACES 10
 #define MAX_LAUNCHER_APPS 15
+#define MAX_LAUNCHER_GRID_APPS 30
 #define POPUP_TYPE_BRIGHTNESS 0
 #define POPUP_TYPE_VOLUME     1
 #define POPUP_COUNT           2
@@ -17,6 +18,12 @@ typedef struct {
     char action[128];
     char icon_path[256];
 } LauncherApp;
+
+typedef struct {
+    char desktop_id[128];
+    char name[64];
+    char icon_path[256];
+} LauncherGridApp;
 
 
 typedef enum {
@@ -117,6 +124,10 @@ typedef struct {
     struct {
         LauncherApp apps[MAX_LAUNCHER_APPS];
         int count;
+        LauncherGridApp grid_apps[MAX_LAUNCHER_GRID_APPS];
+        int grid_count;
+        char grid_filter_mode[8];
+        char grid_filter[1024];
     } launcher;
 
     struct {
@@ -192,6 +203,7 @@ typedef struct {
     GtkWidget *cb_sys_label;
     GtkWidget *cb_layout_label;
     GtkWidget *cb_launcher_btn;
+    GtkWidget *cb_launcher_circle_img;
     GtkWidget *cb_box;
     GtkWidget *menu_window;
     GtkWidget *launcher_window;

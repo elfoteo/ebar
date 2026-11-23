@@ -1,4 +1,5 @@
 #include "chromeos_launcher.h"
+#include "chromeos_bar.h"
 #include "chromeos_menu.h"
 #include "gtk-layer-shell.h"
 #include "ipc.h"
@@ -19,11 +20,42 @@ typedef struct {
 static long long launcher_opened_time = 0;
 static long long last_launcher_destroy_time = 0;
 
+static gboolean pointer_is_over_widget(GtkWidget *widget) {
+	if (!widget || !gtk_widget_get_realized(widget))
+		return FALSE;
+
+	GdkWindow *window = gtk_widget_get_window(widget);
+	if (!window)
+		return FALSE;
+
+	GdkDisplay *display = gdk_display_get_default();
+	GdkSeat *seat = display ? gdk_display_get_default_seat(display) : NULL;
+	GdkDevice *pointer = seat ? gdk_seat_get_pointer(seat) : NULL;
+	if (!pointer)
+		return FALSE;
+
+	gint pointer_x = 0;
+	gint pointer_y = 0;
+	gdk_device_get_position(pointer, NULL, &pointer_x, &pointer_y);
+
+	gint widget_x = 0;
+	gint widget_y = 0;
+	gdk_window_get_origin(window, &widget_x, &widget_y);
+
+	gint width = gtk_widget_get_allocated_width(widget);
+	gint height = gtk_widget_get_allocated_height(widget);
+	return pointer_x >= widget_x && pointer_x < widget_x + width && pointer_y >= widget_y && pointer_y < widget_y + height;
+}
+
 static gboolean on_focus_out(GtkWidget *widget, GdkEventFocus *event, gpointer data) {
 	(void)event;
-	(void)data;
+	BarWindow *bw = (BarWindow *)data;
 	if (get_time_ms() - launcher_opened_time < 300)
 		return TRUE;
+
+	if (pointer_is_over_widget(widget) || (bw && pointer_is_over_widget(bw->window)))
+		return TRUE;
+
 	gtk_widget_destroy(widget);
 	return FALSE;
 }
@@ -47,7 +79,18 @@ static void on_app_clicked(GtkButton *btn, gpointer data) {
 		gtk_widget_destroy(win);
 }
 
-static GtkWidget *create_app_item(GAppInfo *info) {
+static const LauncherGridApp *find_grid_app(GAppInfo *info, Config *cfg) {
+	const char *id = g_app_info_get_id(info);
+	if (!id || !cfg->launcher.grid_count)
+		return NULL;
+	for (int i = 0; i < cfg->launcher.grid_count; i++) {
+		if (strstr(id, cfg->launcher.grid_apps[i].desktop_id))
+			return &cfg->launcher.grid_apps[i];
+	}
+	return NULL;
+}
+
+static GtkWidget *create_app_item(GAppInfo *info, Config *cfg) {
 	GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 	gtk_widget_set_size_request(vbox, 100, 120);
 
@@ -57,12 +100,25 @@ static GtkWidget *create_app_item(GAppInfo *info) {
 
 	GtkWidget *btn_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 
-	GIcon *icon = g_app_info_get_icon(info);
+	const LauncherGridApp *grid_app = find_grid_app(info, cfg);
 	GtkWidget *img;
-	if (icon) {
-		img = gtk_image_new_from_gicon(icon, GTK_ICON_SIZE_DIALOG);
+	if (grid_app && grid_app->icon_path[0]) {
+		GError *err = NULL;
+		GdkPixbuf *pix = gdk_pixbuf_new_from_file_at_scale(grid_app->icon_path, 40, 40, TRUE, &err);
+		if (pix) {
+			img = gtk_image_new_from_pixbuf(pix);
+			g_object_unref(pix);
+		} else {
+			img = gtk_image_new_from_icon_name("application-x-executable", GTK_ICON_SIZE_DIALOG);
+			if (err) g_error_free(err);
+		}
 	} else {
-		img = gtk_image_new_from_icon_name("application-x-executable", GTK_ICON_SIZE_DIALOG);
+		GIcon *icon = g_app_info_get_icon(info);
+		if (icon) {
+			img = gtk_image_new_from_gicon(icon, GTK_ICON_SIZE_DIALOG);
+		} else {
+			img = gtk_image_new_from_icon_name("application-x-executable", GTK_ICON_SIZE_DIALOG);
+		}
 	}
 	gtk_image_set_pixel_size(GTK_IMAGE(img), 40);
 
@@ -78,7 +134,7 @@ static GtkWidget *create_app_item(GAppInfo *info) {
 	gtk_container_add(GTK_CONTAINER(btn), btn_vbox);
 	g_signal_connect(btn, "clicked", G_CALLBACK(on_app_clicked), info);
 
-	const char *name = g_app_info_get_name(info);
+	const char *name = (grid_app && grid_app->name[0]) ? grid_app->name : g_app_info_get_name(info);
 	GtkWidget *lbl = gtk_label_new(name);
 	gtk_label_set_ellipsize(GTK_LABEL(lbl), PANGO_ELLIPSIZE_END);
 	gtk_label_set_max_width_chars(GTK_LABEL(lbl), 11);
@@ -152,9 +208,9 @@ static void apply_launcher_css(AppState *state) {
 			 "  margin: 0; "
 			 "} "
 			 ".launcher-app-icon { "
-			 "  background-color: white; "
+			 "  background: none; "
 			 "  border-radius: 32px; "
-			 "  padding: 12px; "
+			 "  padding: 0; "
 			 "  transition: transform 200ms ease; "
 			 "} "
 			 ".launcher-app-btn:hover .launcher-app-icon { "
@@ -185,6 +241,7 @@ static void on_launcher_destroy(GtkWidget *widget, gpointer data) {
 
 	if (bw->cb_launcher_btn) {
 		gtk_style_context_remove_class(gtk_widget_get_style_context(bw->cb_launcher_btn), "active");
+		chromeos_launcher_set_circle_color(bw, 0xe8 / 255.0, 0xea / 255.0, 0xed / 255.0);
 	}
 }
 
@@ -199,6 +256,14 @@ static GtkWidget *create_launcher_window(BarWindow *bw, AppState *state) {
 	gtk_widget_set_name(win, "launcher-window");
 	gtk_style_context_add_class(gtk_widget_get_style_context(win), "launcher-window");
 	gtk_window_set_resizable(GTK_WINDOW(win), FALSE);
+	gtk_window_set_default_size(GTK_WINDOW(win), LAUNCHER_WIDTH + 32, LAUNCHER_HEIGHT + 32);
+	GdkGeometry geometry = {
+		.min_width = LAUNCHER_WIDTH + 32,
+		.min_height = LAUNCHER_HEIGHT + 32,
+		.max_width = LAUNCHER_WIDTH + 32,
+		.max_height = LAUNCHER_HEIGHT + 32,
+	};
+	gtk_window_set_geometry_hints(GTK_WINDOW(win), win, &geometry, GDK_HINT_MIN_SIZE | GDK_HINT_MAX_SIZE);
 
 	gtk_layer_init_for_window(GTK_WINDOW(win));
 	gtk_layer_set_monitor(GTK_WINDOW(win), bw->monitor);
@@ -213,7 +278,7 @@ static GtkWidget *create_launcher_window(BarWindow *bw, AppState *state) {
 
 	gtk_layer_set_keyboard_mode(GTK_WINDOW(win), GTK_LAYER_SHELL_KEYBOARD_MODE_ON_DEMAND);
 
-	g_signal_connect(win, "focus-out-event", G_CALLBACK(on_focus_out), NULL);
+	g_signal_connect(win, "focus-out-event", G_CALLBACK(on_focus_out), bw);
 	g_signal_connect(win, "key-press-event", G_CALLBACK(on_key_press), NULL);
 	g_signal_connect(win, "destroy", G_CALLBACK(on_launcher_destroy), bw);
 
@@ -248,10 +313,30 @@ static GtkWidget *create_launcher_window(BarWindow *bw, AppState *state) {
 	GList *apps = state->app_list;
 	for (GList *l = apps; l != NULL; l = l->next) {
 		GAppInfo *info = G_APP_INFO(l->data);
-		if (g_app_info_should_show(info)) {
-			GtkWidget *item = create_app_item(info);
-			gtk_container_add(GTK_CONTAINER(flowbox), item);
+		if (!g_app_info_should_show(info))
+			continue;
+
+		const char *mode = state->config.launcher.grid_filter_mode;
+		const char *filter = state->config.launcher.grid_filter;
+
+		if (filter[0] && mode[0]) {
+			const char *id = g_app_info_get_id(info);
+			gboolean matches = FALSE;
+			char tmp[1024];
+			g_strlcpy(tmp, filter, sizeof(tmp));
+			char *sp, *tok = strtok_r(tmp, ",", &sp);
+			while (tok) {
+				while (*tok == ' ') tok++;
+				if (strstr(id, tok))
+					{ matches = TRUE; break; }
+				tok = strtok_r(NULL, ",", &sp);
+			}
+			if (!strcmp(mode, "only") && !matches) continue;
+			if (!strcmp(mode, "except") && matches) continue;
 		}
+
+		GtkWidget *item = create_app_item(info, &state->config);
+		gtk_container_add(GTK_CONTAINER(flowbox), item);
 	}
 
 	launcher_opened_time = get_time_ms();
@@ -278,6 +363,7 @@ void toggle_chromeos_launcher(BarWindow *bw, AppState *state) {
 
 	if (bw->cb_launcher_btn) {
 		gtk_style_context_add_class(gtk_widget_get_style_context(bw->cb_launcher_btn), "active");
+		chromeos_launcher_set_circle_color(bw, 0x20 / 255.0, 0x21 / 255.0, 0x24 / 255.0);
 	}
 
 	bw->launcher_window = create_launcher_window(bw, state);

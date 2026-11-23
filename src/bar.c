@@ -98,7 +98,7 @@ static gboolean on_island_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
 void apply_global_css(AppState *state) {
     Config *cfg = &state->config;
 
-    /* ChromeOS mode has its own standalone CSS — delegate and bail out */
+    /* ChromeOS mode has its own standalone CSS - delegate and bail out */
     if (cfg->mode == MODE_CHROMEOS) {
         apply_chromeos_css(state);
         return;

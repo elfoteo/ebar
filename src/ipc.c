@@ -109,8 +109,18 @@ char *hyprctl_request(const char *cmd) {
     return buf;
 }
 
+static const char *json_find(const char *obj, const char *key, const char *end_obj) {
+    size_t key_len = strlen(key);
+    if (!obj || !key_len) return NULL;
+    if (!end_obj) return strstr(obj, key);
+    for (const char *p = obj; p + key_len <= end_obj; p++) {
+        if (*p == *key && memcmp(p, key, key_len) == 0) return p;
+    }
+    return NULL;
+}
+
 static int get_json_int_from(const char *obj, const char *key, const char *end_obj) {
-    const char *p = strstr(obj, key);
+    const char *p = json_find(obj, key, end_obj);
     if (!p || (end_obj && p >= end_obj)) return -1;
     p += strlen(key);
     while (*p == ' ' || *p == ':' || *p == '\t' || *p == '{' || *p == '"') p++;
@@ -118,13 +128,38 @@ static int get_json_int_from(const char *obj, const char *key, const char *end_o
 }
 
 static int get_json_bool_from(const char *obj, const char *key, const char *end_obj) {
-    const char *p = strstr(obj, key);
+    const char *p = json_find(obj, key, end_obj);
     if (!p || (end_obj && p >= end_obj)) return -1;
     p += strlen(key);
     while (*p == ' ' || *p == ':' || *p == '\t' || *p == '{' || *p == '"') p++;
     if (strncmp(p, "true", 4) == 0) return 1;
     if (strncmp(p, "false", 5) == 0) return 0;
     return -1;
+}
+
+static const char *json_next_object(const char *p, const char **end_out) {
+    while (*p && *p != '{') p++;
+    if (!*p) return NULL;
+    const char *obj = p;
+    int depth = 0;
+    int in_string = 0;
+    int escape = 0;
+    for (; *p; p++) {
+        char c = *p;
+        if (in_string) {
+            if (escape) escape = 0;
+            else if (c == '\\') escape = 1;
+            else if (c == '"') in_string = 0;
+            continue;
+        }
+        if (c == '"') { in_string = 1; continue; }
+        if (c == '{') depth++;
+        else if (c == '}') {
+            depth--;
+            if (depth == 0) { *end_out = p + 1; return obj; }
+        }
+    }
+    return NULL;
 }
 
 int check_fullscreen_on_monitor_with_data(int x, int y, const char *monitors, const char *clients) {
@@ -151,19 +186,20 @@ int check_fullscreen_on_monitor_with_data(int x, int y, const char *monitors, co
     int has_fs = 0;
     int tiled_count = 0;
     p = clients;
-    while ((p = strstr(p, "\"address\":"))) {
-        const char *next_client = strstr(p + 10, "\"address\":");
-        const char *ws = strstr(p, "\"workspace\"");
-        if (ws && (!next_client || ws < next_client)) {
-            int ws_id = get_json_int_from(ws, "\"id\"", next_client);
+    const char *end_obj = NULL;
+    while ((p = json_next_object(p, &end_obj)) != NULL) {
+        const char *next = end_obj;
+        const char *ws = json_find(p, "\"workspace\"", end_obj);
+        if (ws) {
+            int ws_id = get_json_int_from(ws, "\"id\"", end_obj);
             if (ws_id == active_ws) {
-                int fs = get_json_int_from(p, "\"fullscreen\"", next_client);
-                int fl = get_json_bool_from(p, "\"floating\"", next_client);
+                int fs = get_json_int_from(p, "\"fullscreen\"", end_obj);
+                int fl = get_json_bool_from(p, "\"floating\"", end_obj);
                 if (fs > 0) has_fs = 1;
                 if (fl != 1) tiled_count++;
             }
         }
-        p += 10;
+        p = next;
     }
 
     return (has_fs || tiled_count == 1);
@@ -209,7 +245,7 @@ static void fetch_layout_into(AppState *state) {
         const char *val = p + 7;
         while (*val == ' ') val++;
         if (strncmp(val, "true", 4) == 0) {
-            /* Find active_keymap in the enclosing object — scan backward */
+            /* Find active_keymap in the enclosing object - scan backward */
             const char *obj = p;
             while (obj > devs && *obj != '{') obj--;
             json_str(obj, "\"active_keymap\":", active_keymap, sizeof(active_keymap));

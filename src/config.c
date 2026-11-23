@@ -89,9 +89,21 @@ void config_save_default(const char *path) {
     fprintf(f, "curve           = ease   # ease | linear\n\n");
 
     fprintf(f, "[launcher]\n");
-    fprintf(f, "# Format: app = action:icon_path\n");
+    fprintf(f, "# Format for pinned apps: app = action:icon_path\n");
     fprintf(f, "# Icon path can be absolute or relative to ~/.config/ebar/\n");
-    fprintf(f, "app             = firefox:firefox.svg\n\n");
+    fprintf(f, "app             = firefox:firefox.svg\n");
+    fprintf(f, "#\n");
+    fprintf(f, "# Grid filter: controls which apps appear in the launcher popup\n");
+    fprintf(f, "# Mode: only = whitelist, except = blacklist, (empty) = show all\n");
+    fprintf(f, "grid_filter_mode = only\n");
+    fprintf(f, "grid_filter     = chromium, nemo, kitty\n");
+    fprintf(f, "#\n");
+    fprintf(f, "# Custom icons for launcher grid apps: grid_app = desktop_id:name:icon_path\n");
+    fprintf(f, "# desktop_id is the .desktop file ID (e.g. org.chromium.Chromium.desktop)\n");
+    fprintf(f, "# name overrides the displayed app name (optional, can be just desktop_id:icon_path)\n");
+    fprintf(f, "grid_app        = chromium:chrome:chrome.svg\n");
+    fprintf(f, "grid_app        = nemo:files:files.svg\n");
+    fprintf(f, "grid_app        = kitty:terminal:terminal.svg\n\n");
 
     fprintf(f, "[chromeos]\n");
     fprintf(f, "accent_color    = #0179d4\n");
@@ -169,6 +181,9 @@ void config_load(Config *cfg) {
     cfg->brightness.transition_ms = 200;
 
     cfg->launcher.count = 0;
+    cfg->launcher.grid_count = 0;
+    g_strlcpy(cfg->launcher.grid_filter_mode, "only", sizeof(cfg->launcher.grid_filter_mode));
+    g_strlcpy(cfg->launcher.grid_filter, "chromium, nemo, kitty", sizeof(cfg->launcher.grid_filter));
     g_strlcpy(cfg->chromeos.accent_color, "#0179d4", sizeof(cfg->chromeos.accent_color));
     g_strlcpy(cfg->chromeos.screenshot_app, "~/coding/c/escreen/launch.sh", sizeof(cfg->chromeos.screenshot_app));
 
@@ -299,7 +314,46 @@ void config_load(Config *cfg) {
                 }
             } else if (!strcmp(key, "transition_ms")) cfg->brightness.transition_ms = atoi(val);
         } else if (!strcmp(section, "launcher")) {
-            if (!strcmp(key, "app") && cfg->launcher.count < MAX_LAUNCHER_APPS) {
+            if      (!strcmp(key, "grid_filter_mode")) g_strlcpy(cfg->launcher.grid_filter_mode, val, sizeof(cfg->launcher.grid_filter_mode));
+            else if (!strcmp(key, "grid_filter"))      g_strlcpy(cfg->launcher.grid_filter, val, sizeof(cfg->launcher.grid_filter));
+            else if (!strcmp(key, "grid_app") && cfg->launcher.grid_count < MAX_LAUNCHER_GRID_APPS) {
+                char *first_colon = strchr(val, ':');
+                char *second_colon = first_colon ? strchr(first_colon + 1, ':') : NULL;
+                if (first_colon && second_colon) {
+                    *first_colon = '\0';
+                    *second_colon = '\0';
+                    g_strlcpy(cfg->launcher.grid_apps[cfg->launcher.grid_count].desktop_id, val,
+                              sizeof(cfg->launcher.grid_apps[0].desktop_id));
+                    g_strlcpy(cfg->launcher.grid_apps[cfg->launcher.grid_count].name, first_colon + 1,
+                              sizeof(cfg->launcher.grid_apps[0].name));
+                    char *icon_path = second_colon + 1;
+                    if (icon_path[0] == '/') {
+                        g_strlcpy(cfg->launcher.grid_apps[cfg->launcher.grid_count].icon_path, icon_path,
+                                  sizeof(cfg->launcher.grid_apps[0].icon_path));
+                    } else {
+                        snprintf(cfg->launcher.grid_apps[cfg->launcher.grid_count].icon_path,
+                                 sizeof(cfg->launcher.grid_apps[0].icon_path),
+                                 "%s/.config/ebar/%s", getenv("HOME"), icon_path);
+                    }
+                    cfg->launcher.grid_count++;
+                } else if (first_colon) {
+                    *first_colon = '\0';
+                    g_strlcpy(cfg->launcher.grid_apps[cfg->launcher.grid_count].desktop_id, val,
+                              sizeof(cfg->launcher.grid_apps[0].desktop_id));
+                    cfg->launcher.grid_apps[cfg->launcher.grid_count].name[0] = '\0';
+                    char *icon_path = first_colon + 1;
+                    if (icon_path[0] == '/') {
+                        g_strlcpy(cfg->launcher.grid_apps[cfg->launcher.grid_count].icon_path, icon_path,
+                                  sizeof(cfg->launcher.grid_apps[0].icon_path));
+                    } else {
+                        snprintf(cfg->launcher.grid_apps[cfg->launcher.grid_count].icon_path,
+                                 sizeof(cfg->launcher.grid_apps[0].icon_path),
+                                 "%s/.config/ebar/%s", getenv("HOME"), icon_path);
+                    }
+                    cfg->launcher.grid_count++;
+                }
+            }
+            else if (!strcmp(key, "app") && cfg->launcher.count < MAX_LAUNCHER_APPS) {
                 char *colon = strchr(val, ':');
                 if (colon) {
                     *colon = '\0';

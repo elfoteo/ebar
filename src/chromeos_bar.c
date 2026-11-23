@@ -1,10 +1,10 @@
 #include "chromeos_bar.h"
-#include "icons.h"
 #include "bar.h"
 #include "chromeos_launcher.h"
 #include "chromeos_menu.h"
 #include "chromeos_menu_internal.h"
 #include "gtk-layer-shell.h"
+#include "icons.h"
 #include "ipc.h"
 #include "util.h"
 #include "widgets.h"
@@ -49,8 +49,7 @@ void apply_chromeos_css(AppState *state) {
 	guint n_bars = g_list_length(state->bar_windows);
 
 	if (!cached_css || strcmp(cached_font, state->config.font.family) != 0 ||
-	    strcmp(cached_accent, state->config.chromeos.accent_color) != 0 ||
-	    cached_n_bars != n_bars) {
+		strcmp(cached_accent, state->config.chromeos.accent_color) != 0 || cached_n_bars != n_bars) {
 		g_free(cached_css);
 		g_strlcpy(cached_font, state->config.font.family, sizeof(cached_font));
 		g_strlcpy(cached_accent, state->config.chromeos.accent_color, sizeof(cached_accent));
@@ -61,8 +60,9 @@ void apply_chromeos_css(AppState *state) {
 
 #define A(...) n += snprintf(css + n, (int)sizeof(css) - n, __VA_ARGS__)
 
-		A("* { font-family: \"%s\"; font-weight: 600; background: none; box-shadow: none; border: none; } ", state->config.font.family);
+		A("* { font-family: \"%s\"; font-weight: 600; background: none; box-shadow: none; border: none; outline: none; -GtkWidget-focus-line-width: 0; -GtkWidget-focus-padding: 0; } ", state->config.font.family);
 		A("window, .background { background-color: transparent; } ");
+		A("GtkButton { -GtkWidget-focus-padding: 0; -GtkWidget-focus-line-width: 0; } ");
 
 		A(".cb-pill { background-color: #505153; color: #E8EAED; border-radius: 18px; "
 		  "  padding: 0 8px; font-size: 14px; font-weight: 600; min-height: 36px; } ");
@@ -76,14 +76,21 @@ void apply_chromeos_css(AppState *state) {
 		  "  min-width: 36px; min-height: 36px; padding: 0; font-size: 14px; font-weight: 600; } ");
 		A(".cb-circle:hover { background-color: #616264; } ");
 		A(".cb-circle-icon { font-size: 16px; } ");
-		A(".cb-launcher-btn { font-weight: 900; font-size: 24px; } ");
-		A(".cb-launcher-btn.active { background-color: %s; } ", state->config.chromeos.accent_color);
+		A("button { box-shadow: none; outline: none; border-image: none; border: 0px; background-image: none; padding: 0; } ");
+		A("button:hover, button:active, button:checked, button:checked:hover, button:active:hover { "
+		  "  box-shadow: none; outline: none; border-image: none; border: 0px; background-image: none; } ");
+		A(".cb-launcher-btn.active { background-color: %s; color: #202124; } ",
+		  state->config.chromeos.accent_color);
+		A(".cb-launcher-btn image { box-shadow: none; padding: 0; margin: 0; } ");
 
 		A(".cb-app-btn { background: transparent; border-radius: 18px; "
 		  "  min-width: 36px; min-height: 36px; padding: 0; margin: 0; "
-		  "  border: none; outline: none; box-shadow: none; } ");
+		  "  border: none; outline: none; box-shadow: none; transition: none; } ");
 		A(".cb-app-btn image { padding: 0; margin: 0; -gtk-icon-style: requested; } ");
-		A(".cb-app-btn:hover { background-color: #616264; } ");
+		A(".cb-app-btn:hover { background-color: #616264; border: none; outline: none; "
+		  "  -gtk-outline-style: none; -GtkWidget-focus-line-width: 0; -GtkWidget-focus-padding: 0; } ");
+		A(".cb-app-btn:active { background-color: #616264; border: none; outline: none; "
+		  "  -gtk-outline-style: none; -GtkWidget-focus-line-width: 0; -GtkWidget-focus-padding: 0; } ");
 
 		A(".cb-desk-pill { background-color: #505153; color: #E8EAED; border-radius: 18px; "
 		  "  padding: 0 4px; min-height: 36px; } ");
@@ -98,7 +105,8 @@ void apply_chromeos_css(AppState *state) {
 			if (bw->monitor) {
 				GdkRectangle mgeom;
 				gdk_monitor_get_geometry(bw->monitor, &mgeom);
-				A("#chromebook-bar-%d-%d { background-color: #424348; border-radius: 24px 24px 0 0; padding: 6px; transition: border-radius "
+				A("#chromebook-bar-%d-%d { background-color: #424348; border-radius: 24px 24px 0 0; padding: 6px; transition: "
+				  "border-radius "
 				  "200ms ease; } ",
 				  mgeom.x, mgeom.y);
 				A("#chromebook-bar-%d-%d.fullscreen-mode { border-radius: 0; } ", mgeom.x, mgeom.y);
@@ -127,10 +135,8 @@ void apply_chromeos_css(AppState *state) {
 
 /* ── ChromeOS tray update (called from update_widgets_idle) ──────────────── */
 
-void chromeos_update_tray(AppState *state, BarWindow *bw, SystemData *d,
-						  int time_changed, int wifi_changed, int bat_changed,
-						  int kb_changed, int vol_changed, int brightness_changed,
-						  time_t now, struct tm *tmv) {
+void chromeos_update_tray(AppState *state, BarWindow *bw, SystemData *d, int time_changed, int wifi_changed, int bat_changed,
+						  int kb_changed, int vol_changed, int brightness_changed, time_t now, struct tm *tmv) {
 
 	if (time_changed) {
 		if (bw->cb_date_label) {
@@ -148,8 +154,10 @@ void chromeos_update_tray(AppState *state, BarWindow *bw, SystemData *d,
 
 			const char *w_icon = ICON_WIFI_OFF;
 			if (d->wifi_enabled && d->wifi_adapter_exists) {
-				if (d->wifi_connected) w_icon = get_wifi_icon(d->wifi_strength);
-				else w_icon = ICON_WIFI_0;
+				if (d->wifi_connected)
+					w_icon = get_wifi_icon(d->wifi_strength);
+				else
+					w_icon = ICON_WIFI_0;
 			}
 
 			if (d->bat_percent >= 0 && d->bat_percent < 20 && !d->bat_charging)
@@ -206,11 +214,14 @@ void chromeos_update_tray(AppState *state, BarWindow *bw, SystemData *d,
 
 		if (bw->cb_menu_wifi_pill && GTK_IS_WIDGET(bw->cb_menu_wifi_pill)) {
 			GtkStyleContext *ctx = gtk_widget_get_style_context(bw->cb_menu_wifi_pill);
-			if (active) gtk_style_context_add_class(ctx, "cb-menu-pill-active");
-			else gtk_style_context_remove_class(ctx, "cb-menu-pill-active");
+			if (active)
+				gtk_style_context_add_class(ctx, "cb-menu-pill-active");
+			else
+				gtk_style_context_remove_class(ctx, "cb-menu-pill-active");
 
 			gtk_widget_set_sensitive(bw->cb_menu_wifi_pill, pill_sensitive);
-			if (bw->cb_menu_wifi_arrow) gtk_widget_set_sensitive(bw->cb_menu_wifi_arrow, arrow_sensitive);
+			if (bw->cb_menu_wifi_arrow)
+				gtk_widget_set_sensitive(bw->cb_menu_wifi_arrow, arrow_sensitive);
 			if (bw->cb_menu_wifi_subtitle && GTK_IS_LABEL(bw->cb_menu_wifi_subtitle))
 				gtk_label_set_text(GTK_LABEL(bw->cb_menu_wifi_subtitle), w_subtitle);
 			if (bw->cb_menu_wifi_icon && GTK_IS_LABEL(bw->cb_menu_wifi_icon))
@@ -253,6 +264,27 @@ void chromeos_update_tray(AppState *state, BarWindow *bw, SystemData *d,
 	}
 }
 
+void chromeos_launcher_set_circle_color(BarWindow *bw, double r, double g, double b) {
+	if (!bw || !bw->cb_launcher_circle_img)
+		return;
+	int sz = 15;
+	cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, sz, sz);
+	cairo_t *cr = cairo_create(surface);
+	cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+	cairo_paint(cr);
+	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+	cairo_set_line_width(cr, 2.0);
+	cairo_set_source_rgb(cr, r, g, b);
+	cairo_arc(cr, sz / 2.0, sz / 2.0, (sz - 2.0) / 2.0, 0, 2 * G_PI);
+	cairo_stroke(cr);
+	cairo_destroy(cr);
+
+	GdkPixbuf *pix = gdk_pixbuf_get_from_surface(surface, 0, 0, sz, sz);
+	cairo_surface_destroy(surface);
+	gtk_image_set_from_pixbuf(GTK_IMAGE(bw->cb_launcher_circle_img), pix);
+	g_object_unref(pix);
+}
+
 /* ── ChromeOS bar window ──────────────────────────────────────────────────── */
 void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 	GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -284,11 +316,34 @@ void create_chromeos_bar_window(GdkMonitor *monitor, AppState *state) {
 	gtk_widget_set_halign(cb_box, GTK_ALIGN_FILL);
 
 	/* ── Far-left: launcher button ── */
-	GtkWidget *btn_o = gtk_button_new_with_label(ICON_LAUNCHER);
+	GtkWidget *btn_o = gtk_button_new();
+	gtk_button_set_relief(GTK_BUTTON(btn_o), GTK_RELIEF_NONE);
 	bw->cb_launcher_btn = btn_o;
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_o), "cb-circle");
-	gtk_style_context_add_class(gtk_widget_get_style_context(btn_o), "cb-circle-icon");
 	gtk_style_context_add_class(gtk_widget_get_style_context(btn_o), "cb-launcher-btn");
+
+	{
+		int sz = 15;
+		cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, sz, sz);
+		cairo_t *cr = cairo_create(surface);
+		cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+		cairo_paint(cr);
+		cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+		cairo_set_source_rgb(cr, 0xe8 / 255.0, 0xea / 255.0, 0xed / 255.0);
+		cairo_set_line_width(cr, 2.0);
+		cairo_arc(cr, sz / 2.0, sz / 2.0, (sz - 2.0) / 2.0, 0, 2 * G_PI);
+		cairo_stroke(cr);
+		cairo_destroy(cr);
+
+		GdkPixbuf *pix = gdk_pixbuf_get_from_surface(surface, 0, 0, sz, sz);
+		cairo_surface_destroy(surface);
+		GtkWidget *img = gtk_image_new_from_pixbuf(pix);
+		g_object_unref(pix);
+		gtk_widget_set_halign(img, GTK_ALIGN_CENTER);
+		gtk_widget_set_valign(img, GTK_ALIGN_CENTER);
+		gtk_container_add(GTK_CONTAINER(btn_o), img);
+		bw->cb_launcher_circle_img = img;
+	}
 
 	typedef struct {
 		BarWindow *bw;

@@ -10,5 +10,6 @@ void chromeos_update_tray(AppState *state, BarWindow *bw, SystemData *d,
 						  int time_changed, int wifi_changed, int bat_changed,
 						  int kb_changed, int vol_changed, int brightness_changed,
 						  time_t now, struct tm *tmv);
+void chromeos_launcher_set_circle_color(BarWindow *bw, double r, double g, double b);
 
 #endif
